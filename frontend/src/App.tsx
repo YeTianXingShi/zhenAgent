@@ -1,3 +1,4 @@
+import SessionMenu from "./SessionMenu"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/native-select"
@@ -231,7 +232,7 @@ export default function App() {
       <div className="brand"><span className="brand-icon">z</span><div><strong>zhenAgent</strong><small>本地工作台</small></div><span className="version">0.1</span></div>
       <Button variant="ghost" className="new-session" onClick={openNew} disabled={!connected || !providers.length}>＋ 新建会话</Button>
       <div className="sidebar-label">会话记录 <span>{sessions.length}</span></div>
-      <nav className="session-list">{sessions.map(session => <div className="session-row" key={session.id}><Button variant="ghost" className={`session-item ${selected === session.id ? 'active' : ''}`} onClick={() => setSelected(session.id)}><span className={running(session.last_status || '') ? 'session-dot busy-dot' : 'session-dot'} /><div><strong>{session.title}</strong><small>{session.provider_name} · {session.model_id}</small></div></Button><div className="session-controls"><Button variant="ghost" size="icon" aria-label={`重命名会话：${session.title}`} title="重命名" onClick={() => manageSession(session, 'rename')}>✎</Button><Button variant="ghost" size="icon" aria-label={`删除会话：${session.title}`} title={running(session.last_status || '') ? '先停止任务再删除' : '删除会话'} disabled={running(session.last_status || '')} onClick={() => manageSession(session, 'delete')}>×</Button></div></div>)}{!sessions.length && <p className="sidebar-empty">创建第一个会话，<br />从一个明确的任务开始。</p>}</nav>
+      <nav className="session-list">{sessions.map(session => <div className="session-row" key={session.id}><Button variant="ghost" className={`session-item ${selected === session.id ? 'active' : ''}`} onClick={() => setSelected(session.id)}><span className={running(session.last_status || '') ? 'session-dot busy-dot' : 'session-dot'} /><div><strong>{session.title}</strong><small>{session.provider_name} · {session.model_id}</small></div></Button><div className="session-controls"><SessionMenu session={session} onAction={manageSession} /></div></div>)}{!sessions.length && <p className="sidebar-empty">创建第一个会话，<br />从一个明确的任务开始。</p>}</nav>
       <footer className="sidebar-footer"><Button variant="ghost" onClick={openSettings} disabled={!connected}><span>⚙</span>模型与运行设置 <span className="chevron">›</span></Button><div className="sidebar-state"><i className={connected ? 'online' : ''} />{connected ? '后端已连接' : '等待后端连接'}</div></footer>
     </aside>
     <main className="main-panel">
