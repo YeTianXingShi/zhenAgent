@@ -8,6 +8,8 @@ class ModelConfig(BaseModel):
     label: str = Field(default="", max_length=200)
     reasoning_effort: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,49}$")
     max_output_tokens: int | None = Field(default=None, ge=1)
+    context_tokens: int | None = Field(default=None, ge=1)
+    temperature: float | None = Field(default=None, ge=0, le=2, allow_inf_nan=False)
 
     @field_validator("id")
     @classmethod

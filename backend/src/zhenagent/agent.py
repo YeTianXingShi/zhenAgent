@@ -6,6 +6,7 @@ from .config import Limits
 from .responses import ModelError, Responses, reasoning_text
 from .storage import Secrets, Store, encode, new_id, now
 from .tools import ToolError, ToolRunner, context_result, definitions
+from .usage import total_tokens
 
 
 TERMINAL = {"completed", "failed", "cancelled", "denied", "interrupted", "limited"}
@@ -132,6 +133,16 @@ class Agent:
                 if self.active and self.active.id == run_id:
                     self.active = None
 
+    @staticmethod
+    def check_context(usage, context_limit: int | None):
+        consumed = total_tokens(usage)
+        if context_limit is not None and consumed is not None and consumed >= context_limit:
+            raise RunStopped(
+                "limited",
+                f"最近一次模型返回的实际用量为 {consumed:,} tokens，已达到上下文上限 {context_limit:,}。"
+                "任务已停止，历史已保留；请新建会话或调整上限。新增消息和工具结果尚未计入该统计。",
+            )
+
     async def loop(self, run_id: str, session: dict, provider: dict, model: dict, key: str, limits: Limits):
         runner = ToolRunner(self.workspace, self.data_dir, limits)
         call_count = 0
@@ -145,6 +156,12 @@ class Agent:
             "不会自动读取 AGENTS.md、skill 或插件作为指令。"
         )
         while True:
+            latest = await self.store.one(
+                "SELECT a.usage FROM items i JOIN attempts a ON a.id=i.attempt_id "
+                "WHERE i.session_id=? ORDER BY i.id DESC LIMIT 1", (session["id"],),
+            )
+            self.check_context(json.loads(latest["usage"]) if latest and latest["usage"] else None,
+                               model.get("context_tokens"))
             round_number += 1
             context = await self.store.context(session["id"])
             body = {"model": model["id"], "input": context, "instructions": instructions,
@@ -153,6 +170,8 @@ class Agent:
                 body["reasoning"] = {"effort": model["reasoning_effort"]}
             if model.get("max_output_tokens") is not None:
                 body["max_output_tokens"] = model["max_output_tokens"]
+            if model.get("temperature") is not None:
+                body["temperature"] = model["temperature"]
             result = None
             for retry in range(limits.max_retries + 1):
                 if call_count >= limits.max_model_calls:
@@ -161,8 +180,8 @@ class Agent:
                 await self.store.execute("UPDATE runs SET call_count=? WHERE id=?", (call_count, run_id))
                 attempt_id = new_id()
                 await self.store.execute(
-                    "INSERT INTO attempts(id,run_id,round,attempt,status,created_at) VALUES(?,?,?,?,'running',?)",
-                    (attempt_id, run_id, round_number, retry + 1, now()),
+                    "INSERT INTO attempts(id,run_id,round,attempt,status,created_at,context_limit) VALUES(?,?,?,?,'running',?,?)",
+                    (attempt_id, run_id, round_number, retry + 1, now(), model.get("context_tokens")),
                 )
                 await self.store.event(run_id, "attempt.started", {"id": attempt_id, "round": round_number, "attempt": retry + 1, "call_count": call_count})
                 text = ""
@@ -172,6 +191,11 @@ class Agent:
                 async def model_event(event: dict):
                     nonlocal text, reasoning
                     kind = event.get("type", "")
+                    response = event.get("response")
+                    if (kind in {"response.completed", "response.incomplete", "response.failed"}
+                            and isinstance(response, dict) and isinstance(response.get("usage"), dict)):
+                        await self.store.execute("UPDATE attempts SET usage=? WHERE id=?",
+                                                 (encode(response["usage"]), attempt_id))
                     if kind == "response.output_text.delta":
                         delta = self.secrets.redact(str(event.get("delta", "")))
                         text += delta
@@ -198,7 +222,7 @@ class Agent:
                     await self.store.execute("UPDATE attempts SET status='completed',text=?,reasoning=?,usage=? WHERE id=?", (
                         self.secrets.redact(canonical) or text,
                         self.secrets.redact(reasoning_text(result["output"])) or reasoning,
-                        encode(result.get("usage", {})), attempt_id,
+                        encode(result.get("usage")), attempt_id,
                     ))
                     await self.store.event(run_id, "attempt.completed", {"id": attempt_id})
                     break
@@ -228,6 +252,7 @@ class Agent:
                     (new_id(), run_id, call["call_id"], str(call.get("name", "")),
                      str(call.get("arguments", "")), round_number),
                 )
+            self.check_context(result.get("usage"), model.get("context_tokens"))
             if not calls:
                 return
             await self.store.event(run_id, "tools.created", {})

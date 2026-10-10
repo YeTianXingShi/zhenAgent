@@ -118,6 +118,7 @@ class Store:
         for table, column, definition in (
             ("providers", "catalog_provider_id", "TEXT"),
             ("attempts", "reasoning", "TEXT NOT NULL DEFAULT ''"),
+            ("attempts", "context_limit", "INTEGER"),
             ("items", "attempt_id", "TEXT REFERENCES attempts(id)"),
         ):
             async with self.db.execute(f"PRAGMA table_info({table})") as cursor:

@@ -174,6 +174,9 @@ class Catalog:
         metadata = self.model(provider.get("catalog_provider_id"), model["id"])
         return {
             **model, "catalog": metadata,
+            "context_tokens": model.get("context_tokens"),
+            "temperature": model.get("temperature"),
             "resolved_label": model.get("label") or (metadata or {}).get("name") or model["id"],
             "resolved_max_output_tokens": model.get("max_output_tokens") or (metadata or {}).get("output_tokens"),
+            "resolved_context_tokens": model.get("context_tokens") or (metadata or {}).get("context_tokens"),
         }

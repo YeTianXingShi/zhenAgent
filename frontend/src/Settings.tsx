@@ -3,8 +3,8 @@ import { request, send, type Provider, type ModelProfile, type Catalog, type Cat
 
 type Props = { providers: Provider[]; settings: RuntimeSettings | null; refresh: () => Promise<void>; close: () => void; error: (message: string) => void }
 
-const emptyModel = (): ModelProfile => ({ id: '', label: '', reasoning_effort: null, max_output_tokens: null })
-const editableModel = (model: ModelProfile): ModelProfile => ({ id: model.id, label: model.label, reasoning_effort: model.reasoning_effort ?? null, max_output_tokens: model.max_output_tokens ?? null })
+const emptyModel = (): ModelProfile => ({ id: '', label: '', reasoning_effort: null, max_output_tokens: null, context_tokens: null, temperature: null })
+const editableModel = (model: ModelProfile): ModelProfile => ({ id: model.id, label: model.label, reasoning_effort: model.reasoning_effort ?? null, max_output_tokens: model.max_output_tokens ?? null, context_tokens: model.context_tokens ?? null, temperature: model.temperature ?? null })
 const limitFields: Record<keyof Limits, { label: string; min: number; max: number; step: number | 'any' }> = {
   max_model_calls: { label: '任务模型调用上限', min: 1, max: 200, step: 1 },
   command_timeout: { label: '单条命令超时（秒）', min: 1, max: 3600, step: 1 },
@@ -93,7 +93,7 @@ export default function SettingsPanel({ providers, settings, refresh, close, err
 
   function restoreDefaults(index: number) {
     setModels(entries => entries.map((entry, at) => at === index
-      ? { ...entry, reasoning_effort: null, max_output_tokens: null } : entry))
+      ? { ...entry, reasoning_effort: null, max_output_tokens: null, context_tokens: null, temperature: null } : entry))
   }
 
   async function saveProvider(event: React.FormEvent) {
@@ -155,6 +155,11 @@ export default function SettingsPanel({ providers, settings, refresh, close, err
               <div className="form-row"><label>模型 ID<input value={model.id} required onChange={event => modelField(index, 'id', event.target.value)} placeholder="填写服务支持的模型 ID" /></label><label>显示名称<input value={model.label} onChange={event => modelField(index, 'label', event.target.value)} placeholder={metadata?.name || '使用模型 ID'} /></label></div>
               <p className="field-note">{metadata ? `上下文上限：${metadata.context_tokens?.toLocaleString() || '未提供'} tokens · 输出上限：${metadata.output_tokens?.toLocaleString() || '未提供'} tokens` : 'Models.dev 未收录此模型，留空参数将使用服务端默认值。'}{metadata && !metadata.tool_call && ' · Models.dev 未声明工具调用能力'}{metadata?.status === 'deprecated' && ' · 模型已标记弃用'}</p>
               <div className="form-row"><label>思考强度{efforts.length ? <select value={model.reasoning_effort ?? ''} onChange={event => modelField(index, 'reasoning_effort', event.target.value || null)}><option value="">服务端默认 · 不指定</option>{model.reasoning_effort && !efforts.includes(model.reasoning_effort) && <option value={model.reasoning_effort}>{model.reasoning_effort} · 已保存，Models.dev 未声明</option>}{efforts.map(effort => <option key={effort} value={effort}>{effort === 'none' ? '关闭 · none' : effort}</option>)}</select> : <input value={model.reasoning_effort ?? ''} onChange={event => modelField(index, 'reasoning_effort', event.target.value || null)} placeholder="留空使用服务端默认" pattern="[a-z][a-z0-9_-]{0,49}" />}<span className="field-note">Models.dev 提供可选档位，没有指定默认强度。</span></label><label>输出 token 上限<input type="number" min={1} step={1} value={model.max_output_tokens ?? ''} onChange={event => modelField(index, 'max_output_tokens', event.target.value === '' ? null : Number(event.target.value))} placeholder={metadata?.output_tokens ? `跟随模型信息：${metadata.output_tokens}` : '留空使用服务端默认'} /><span className="field-note">{model.max_output_tokens !== null ? '当前使用手动覆盖值。' : metadata?.output_tokens ? '当前跟随 Models.dev，模型信息更新后新任务采用新值。' : '当前不发送输出上限参数。'}</span></label></div>
+              <div className="form-row">
+                <label>上下文 token 上限<input type="number" min={1} step={1} value={model.context_tokens ?? ''} onChange={event => modelField(index, 'context_tokens', event.target.value === '' ? null : Number(event.target.value))} placeholder={metadata?.context_tokens ? `跟随模型信息：${metadata.context_tokens}` : '留空不设置本地上限'} /><span className="field-note">{model.context_tokens !== null ? '当前使用手动覆盖值。' : metadata?.context_tokens ? '当前跟随 Models.dev。' : '模型信息未提供上限，当前不设置本地上限。'}按最近一次响应的实际输入与输出总量判断，达到上限时停止并保留历史。</span></label>
+                <label>温度<input type="number" min={0} max={2} step="any" value={model.temperature ?? ''} onChange={event => modelField(index, 'temperature', event.target.value === '' ? null : Number(event.target.value))} placeholder="留空使用服务端默认" /><span className="field-note">范围 0–2。Models.dev 未提供数值默认值，留空不发送 temperature。{catalogId === 'deepseek' && 'DeepSeek 思考模式下此参数不生效。'}</span></label>
+              </div>
+              <p className="field-note">用量只取服务返回的 usage，不做本地估算。缓存命中计入输入；新消息和工具结果的 token 数要等下一次响应才能得知。</p>
               <div className="model-actions"><button className="text-button" type="button" onClick={() => restoreDefaults(index)}>恢复默认参数</button>{models.length > 1 && <button className="text-button danger" type="button" onClick={() => setModels(entries => entries.filter((_, at) => at !== index))}>移除此模型</button>}</div>
             </div>
           })}

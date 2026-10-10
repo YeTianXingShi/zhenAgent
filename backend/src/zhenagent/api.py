@@ -246,6 +246,7 @@ async def start_run(session_id: str, value: RunInput):
         raise Conflict("会话使用的模型已不存在")
     resolved = app.state.catalog.resolve(provider, model)
     resolved["max_output_tokens"] = resolved["resolved_max_output_tokens"]
+    resolved["context_tokens"] = resolved["resolved_context_tokens"]
     return await app.state.agent.start(session, value.text, value.client_request_id, provider, resolved)
 
 

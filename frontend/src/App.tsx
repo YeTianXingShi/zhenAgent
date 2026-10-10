@@ -5,6 +5,7 @@ import { API, request, send, running, statuses, toolNames, type Provider, type S
 import SettingsPanel from './Settings'
 import FilePreview, { isNewFile } from './FilePreview'
 import Reasoning from './Reasoning'
+import TokenUsage from './TokenUsage'
 
 const activeRun = (detail: Detail | null) => detail?.runs.find(run => running(run.status))
 
@@ -39,7 +40,7 @@ function RunView({ run, act, approvalBusy }: { run: Run; act: (id: string, value
         {attempt.text && <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer">{children}</a> }}>{attempt.text}</ReactMarkdown></div>}
         {attempt.status === 'running' && <span className="working"><i />{attempt.reasoning && !attempt.text ? '模型思考中' : '模型生成中'}</span>}
         {attempt.error && <p className="attempt-error">尝试 {attempt.attempt} 已中断：{attempt.error}</p>}
-        {attempt.usage && <span className="usage">输入 {attempt.usage.input_tokens ?? '—'} · 输出 {attempt.usage.output_tokens ?? '—'} tokens</span>}
+        <TokenUsage attempt={attempt} />
       </div>)}
       {run.tools.filter(tool => tool.round === round).map(tool => <ToolCard key={tool.id} tool={tool} act={act} busy={approvalBusy} />)}</Fragment>)}
       {run.error && <div className="run-error">{run.error}</div>}
