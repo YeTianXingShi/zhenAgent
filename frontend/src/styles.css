@@ -182,6 +182,11 @@ h1 { margin: 7px 0 0; font-size: 17px; font-weight: 500; }
 .provider-list button span { display: block; color: #93a17f; font-size: 10px; margin-top: 5px; }
 .provider-list .add-provider { font-size: 11px; margin-top: 10px; }
 .provider-form { padding: 25px 28px; }
+.catalog-status { background: #eff3e8; border: 1px solid #dfe6d7; border-radius: 8px; padding: 12px 15px; margin-bottom: 18px; }
+.catalog-status > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.catalog-status strong { font-size: 12px; font-weight: 500; }
+.catalog-status p { color: #748566; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; margin: 8px 0 0; }
+.model-actions { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .form-intro h3, .section-label h3 { margin: 0; font-weight: 500; font-size: 14px; }
 .form-intro p { color: #8d9980; font-size: 11px; line-height: 1.8; margin: 9px 0 20px; }
 label { display: flex; flex-direction: column; gap: 8px; color: #748566; font-size: 11px; margin-bottom: 16px; }

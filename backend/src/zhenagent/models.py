@@ -1,4 +1,3 @@
-from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -7,8 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class ModelConfig(BaseModel):
     id: str = Field(min_length=1, max_length=200)
     label: str = Field(default="", max_length=200)
-    reasoning_effort: Literal["none", "low", "high", "max"] = "high"
-    max_output_tokens: int = Field(default=8192, ge=128, le=131072)
+    reasoning_effort: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,49}$")
+    max_output_tokens: int | None = Field(default=None, ge=1)
 
     @field_validator("id")
     @classmethod
@@ -24,6 +23,7 @@ class ProviderInput(BaseModel):
     base_url: str = Field(min_length=1, max_length=2048)
     models: list[ModelConfig] = Field(min_length=1, max_length=100)
     api_key: str | None = Field(default=None, max_length=10000)
+    catalog_provider_id: str | None = Field(default=None, min_length=1, max_length=200)
 
     @field_validator("name")
     @classmethod

@@ -19,8 +19,11 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
 
 export const send = (method: string, value: unknown): RequestInit => ({ method, body: JSON.stringify(value) })
 
-export type ModelProfile = { id: string; label: string; reasoning_effort: string; max_output_tokens: number }
-export type Provider = { id: string; name: string; base_url: string; models: ModelProfile[]; has_api_key: boolean }
+export type CatalogModel = { id: string; name: string; context_tokens: number | null; input_tokens: number | null; output_tokens: number | null; reasoning: boolean; reasoning_efforts: string[]; tool_call: boolean; input_modalities: string[]; output_modalities: string[]; status: string | null }
+export type CatalogProvider = { id: string; name: string; api: string | null }
+export type Catalog = { source_url: string; fetched_at: string | null; stale: boolean; error: string | null; providers: CatalogProvider[] }
+export type ModelProfile = { id: string; label: string; reasoning_effort: string | null; max_output_tokens: number | null; catalog?: CatalogModel | null; resolved_label?: string; resolved_max_output_tokens?: number | null }
+export type Provider = { id: string; name: string; base_url: string; catalog_provider_id: string | null; models: ModelProfile[]; has_api_key: boolean }
 export type Session = { id: string; title: string; provider_id: string; model_id: string; provider_name?: string; updated_at: string; last_status?: string }
 export type Attempt = { id: string; round: number; attempt: number; status: string; text: string; reasoning: string; error: string | null; usage: { input_tokens?: number; output_tokens?: number } | null }
 export type ToolPreview = { command?: string; cwd?: string; warning?: string; path?: string; diff?: string; content?: string; fingerprint?: string | null; operation?: 'create' | 'update' }

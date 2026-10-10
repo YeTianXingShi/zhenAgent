@@ -135,6 +135,7 @@ export default function App() {
 
   function openNew() {
     setError('')
+    if (!providers.length) { setShowSettings(true); return }
     chooseProvider(providers[0]?.id || '')
     setShowNew(true)
   }
@@ -191,7 +192,7 @@ export default function App() {
       <footer className="sidebar-footer"><button onClick={() => setShowSettings(true)} disabled={!connected}><span>⚙</span>模型与运行设置 <span className="chevron">›</span></button><div className="sidebar-state"><i className={connected ? 'online' : ''} />{connected ? '后端已连接' : '等待后端连接'}</div></footer>
     </aside>
     <main className="main-panel">
-      <header className="topbar"><div><span className="eyebrow">LOCAL AGENT</span><h1>{detail?.title || '开始你的下一项任务'}</h1></div><div className="topbar-right">{detail && <span className="model-chip">{boundModel?.label || detail.model_id}</span>}<span className="local-badge">本机 · 单任务</span></div></header>
+      <header className="topbar"><div><span className="eyebrow">LOCAL AGENT</span><h1>{detail?.title || '开始你的下一项任务'}</h1></div><div className="topbar-right">{detail && <span className="model-chip">{boundModel?.resolved_label || boundModel?.label || detail.model_id}</span>}<span className="local-badge">本机 · 单任务</span></div></header>
       {error && <div className="error-banner" role="alert"><span>{error}</span><button onClick={() => setError('')} aria-label="关闭错误提示">×</button></div>}
       <div className="conversation" ref={scroll} onScroll={() => { const area = scroll.current!; stick.current = area.scrollHeight - area.scrollTop - area.clientHeight < 100 }}>
         {!detail || detail.runs.length === 0 ? <div className="welcome">
@@ -207,6 +208,6 @@ export default function App() {
       </div>
     </main>
     {showSettings && <SettingsPanel providers={providers} settings={settings} refresh={refresh} close={() => setShowSettings(false)} error={setError} />}
-    {showNew && <div className="modal-backdrop" onClick={event => event.target === event.currentTarget && setShowNew(false)}><form className="modal new-dialog" role="dialog" aria-modal="true" aria-label="新建会话" onSubmit={create}><header className="modal-header"><div><span className="eyebrow">新的开始</span><h2>新建会话</h2></div><button type="button" className="icon-button" aria-label="关闭新建会话" onClick={() => setShowNew(false)}>×</button></header>{error && <p className="inline-error" role="alert">{error}</p>}<p>每个会话固定服务和模型，需要切换时新建会话。</p><label>模型服务<select value={newProvider} required onChange={event => chooseProvider(event.target.value)}>{providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label><label>模型<select value={newModel} required onChange={event => setNewModel(event.target.value)}>{providers.find(provider => provider.id === newProvider)?.models.map(model => <option key={model.id} value={model.id}>{model.label || model.id}</option>)}</select></label><footer className="form-actions"><button className="primary" disabled={busy || !newProvider || !newModel}>创建会话</button></footer></form></div>}
+    {showNew && <div className="modal-backdrop" onClick={event => event.target === event.currentTarget && setShowNew(false)}><form className="modal new-dialog" role="dialog" aria-modal="true" aria-label="新建会话" onSubmit={create}><header className="modal-header"><div><span className="eyebrow">新的开始</span><h2>新建会话</h2></div><button type="button" className="icon-button" aria-label="关闭新建会话" onClick={() => setShowNew(false)}>×</button></header>{error && <p className="inline-error" role="alert">{error}</p>}<p>每个会话固定服务和模型，需要切换时新建会话。</p><label>模型服务<select value={newProvider} required onChange={event => chooseProvider(event.target.value)}>{providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label><label>模型<select value={newModel} required onChange={event => setNewModel(event.target.value)}>{providers.find(provider => provider.id === newProvider)?.models.map(model => <option key={model.id} value={model.id}>{model.resolved_label || model.label || model.id}</option>)}</select></label><footer className="form-actions"><button className="primary" disabled={busy || !newProvider || !newModel}>创建会话</button></footer></form></div>}
   </div>
 }

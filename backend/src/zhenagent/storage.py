@@ -116,6 +116,7 @@ class Store:
             CREATE INDEX IF NOT EXISTS items_run ON items(run_id, id);
         """)
         for table, column, definition in (
+            ("providers", "catalog_provider_id", "TEXT"),
             ("attempts", "reasoning", "TEXT NOT NULL DEFAULT ''"),
             ("items", "attempt_id", "TEXT REFERENCES attempts(id)"),
         ):

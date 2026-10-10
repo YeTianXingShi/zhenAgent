@@ -38,9 +38,19 @@ pnpm --dir frontend dev
 
 ## 模型配置与会话
 
-在“模型与运行设置”中填写服务地址、API key 和模型列表。默认 DeepSeek 地址为 `https://api.deepseek.com`，模型 ID 为 `deepseek-flash`；后端在地址末尾添加 `/responses`。兼容服务若要求 `/v1` 前缀，应把它写入服务地址，具体以服务文档为准。[DeepSeek 官方说明](https://api-docs.deepseek.com/zh-cn/guides/responses_api/)给出该服务的参数与限制。
+在“模型与运行设置”中添加服务，在“参数来源”选择对应的 Models.dev 服务。新增服务会填入目录中的名称和地址；可选择模型，也可手动输入 ID。目录收录不代表服务支持 Responses，使用前需确认。DeepSeek 可选 `deepseek-flash`；后端在服务地址末尾添加 `/responses`。兼容服务若要求 `/v1` 前缀，应把它写入服务地址，具体以服务文档为准。[DeepSeek 官方说明](https://api-docs.deepseek.com/zh-cn/guides/responses_api/)给出该服务的参数与限制。
 
-每个模型可配置显示名称、思考强度和输出 token 上限。默认思考强度为 `high`；思考 token 计入输出预算。其他服务必须支持 Responses 流式响应、function 工具调用及配置中选择的参数。
+后端通过 HTTP GET 获取 `https://models.dev/api.json`，与下面的 curl 命令使用同一目录，不依赖 SDK 或本地参考仓库：
+
+```sh
+curl https://models.dev/api.json
+```
+
+目录缓存保存在数据目录的 `models-dev.json`。启动时读取缓存，超过一小时则更新；运行时每小时更新，也可点“更新目录”。界面显示来源、更新时间、过期状态与获取错误。更新失败保留已有缓存；首次获取失败可先手动填写服务和模型。
+
+每个模型可配置显示名称、思考强度和输出 token 上限。名称留空时使用目录名称；输出上限留空时在新任务启动时读取目录的 `limit.output`，未收录时不发送该参数。上下文和输入上限只作信息展示，首版仍不自动压缩上下文。思考档位从 `reasoning_options` 提取，目录没有默认思考强度，留空时不发送 `reasoning`；温度也不指定。手动填写的值优先，思考 token 计入输出预算。服务必须支持 Responses 流式响应、function 工具调用及所选参数，目录的上限可能与 Responses 接口限制不同，必要时手动调整。
+
+旧版本保存的参数保留为覆盖值；点击“恢复目录默认”并保存，输出上限才开始跟随目录，思考强度回到服务端默认。首次升级只为可准确匹配的已有服务关联目录，不删除模型、会话或密钥。运行上限里的模型调用次数、超时和响应字节限制属于 agent 控制，不从模型目录读取。
 
 密钥以明文保存在本机 `secrets.json`，文件权限为 `0600`，所在数据目录权限为 `0700`。保存后只显示“密钥已设置”，不回显原值；编辑时密钥留空会保留原密钥。密钥不会写入浏览器本地存储。不要把数据目录提交到 Git，尤其是自定义 `ZHEN_DATA_DIR` 时。
 

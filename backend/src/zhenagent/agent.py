@@ -148,9 +148,11 @@ class Agent:
             round_number += 1
             context = await self.store.context(session["id"])
             body = {"model": model["id"], "input": context, "instructions": instructions,
-                    "stream": True, "tools": definitions(), "tool_choice": "auto",
-                    "reasoning": {"effort": model["reasoning_effort"]},
-                    "max_output_tokens": model["max_output_tokens"]}
+                    "stream": True, "tools": definitions(), "tool_choice": "auto"}
+            if model.get("reasoning_effort") is not None:
+                body["reasoning"] = {"effort": model["reasoning_effort"]}
+            if model.get("max_output_tokens") is not None:
+                body["max_output_tokens"] = model["max_output_tokens"]
             result = None
             for retry in range(limits.max_retries + 1):
                 if call_count >= limits.max_model_calls:

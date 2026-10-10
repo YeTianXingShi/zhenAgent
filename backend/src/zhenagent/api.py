@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .agent import Agent, Conflict, TERMINAL
+from .catalog import Catalog
 from .config import Limits, Settings
 from .models import ApprovalInput, ProviderInput, RunInput, SessionInput
 from .responses import Responses, reasoning_text
@@ -32,22 +33,31 @@ async def lifespan(app: FastAPI):
     store = Store(directory / "zhenagent.db")
     await store.open()
     await store.recover()
-    if not await store.one("SELECT id FROM providers LIMIT 1"):
-        await store.execute("INSERT INTO providers(id,name,base_url,models) VALUES(?,?,?,?)", (
-            "deepseek", "DeepSeek", "https://api.deepseek.com",
-            encode([{"id": "deepseek-flash", "label": "DeepSeek Flash", "reasoning_effort": "high", "max_output_tokens": 8192}]),
-        ))
     saved = await store.one("SELECT value FROM config WHERE key='limits'")
     limits = Limits.model_validate_json(saved["value"]) if saved else Limits()
     async with httpx.AsyncClient(follow_redirects=False) as client:
+        catalog = Catalog(client, directory)
+        catalog.load()
+        if catalog.stale():
+            await catalog.refresh()
+        if catalog.providers and not await store.one("SELECT value FROM config WHERE key='catalog_link_migration'"):
+            for provider in await store.rows("SELECT * FROM providers WHERE catalog_provider_id IS NULL"):
+                catalog_id = catalog.infer_provider(provider)
+                if catalog_id:
+                    await store.execute("UPDATE providers SET catalog_provider_id=? WHERE id=?", (catalog_id, provider["id"]))
+            await store.execute("INSERT INTO config(key,value) VALUES('catalog_link_migration','1')")
         agent = Agent(store, secrets, Responses(client), workspace, directory, limits)
         app.state.settings = settings
         app.state.store = store
         app.state.secrets = secrets
         app.state.agent = agent
+        app.state.catalog = catalog
+        catalog_task = asyncio.create_task(catalog.maintain())
         try:
             yield
         finally:
+            catalog_task.cancel()
+            await asyncio.gather(catalog_task, return_exceptions=True)
             await agent.close()
             await store.close()
 
@@ -90,7 +100,7 @@ def safe(value):
 
 
 def provider_view(provider: dict) -> dict:
-    return {**provider, "models": json.loads(provider["models"]),
+    return {**provider, "models": [app.state.catalog.resolve(provider, model) for model in json.loads(provider["models"])],
             "has_api_key": bool(app.state.secrets.get(provider["id"]))}
 
 
@@ -127,13 +137,32 @@ async def providers():
     return safe([provider_view(provider) for provider in await store().rows("SELECT * FROM providers ORDER BY name")])
 
 
+@app.get("/api/model-catalog")
+async def model_catalog():
+    return app.state.catalog.summary()
+
+
+@app.post("/api/model-catalog/refresh")
+async def refresh_catalog():
+    await app.state.catalog.refresh()
+    return app.state.catalog.summary()
+
+
+@app.get("/api/model-catalog/providers/{catalog_id}")
+async def catalog_provider(catalog_id: str):
+    provider = app.state.catalog.providers.get(catalog_id)
+    if not provider:
+        raise HTTPException(404, "Models.dev 缓存中没有该服务，请更新目录或使用手动配置")
+    return {**provider, "models": list(provider["models"].values())}
+
+
 @app.post("/api/providers", status_code=201)
 async def add_provider(value: ProviderInput):
     provider_id = new_id()
     if value.api_key and value.api_key.strip():
         app.state.secrets.set(provider_id, value.api_key.strip())
-    await store().execute("INSERT INTO providers(id,name,base_url,models) VALUES(?,?,?,?)", (
-        provider_id, value.name.strip(), value.base_url, encode([model.model_dump() for model in value.models]),
+    await store().execute("INSERT INTO providers(id,name,base_url,models,catalog_provider_id) VALUES(?,?,?,?,?)", (
+        provider_id, value.name.strip(), value.base_url, encode([model.model_dump() for model in value.models]), value.catalog_provider_id,
     ))
     return safe(provider_view(await require_provider(provider_id)))
 
@@ -147,8 +176,8 @@ async def update_provider(provider_id: str, value: ProviderInput):
         raise Conflict("已有会话使用的模型不能移除；可另建一个服务配置")
     if value.api_key and value.api_key.strip():
         app.state.secrets.set(provider_id, value.api_key.strip())
-    await store().execute("UPDATE providers SET name=?,base_url=?,models=? WHERE id=?", (
-        value.name.strip(), value.base_url, encode([model.model_dump() for model in value.models]), provider_id,
+    await store().execute("UPDATE providers SET name=?,base_url=?,models=?,catalog_provider_id=? WHERE id=?", (
+        value.name.strip(), value.base_url, encode([model.model_dump() for model in value.models]), value.catalog_provider_id, provider_id,
     ))
     return safe(provider_view(await require_provider(provider_id)))
 
@@ -215,7 +244,9 @@ async def start_run(session_id: str, value: RunInput):
     model = next((entry for entry in json.loads(provider["models"]) if entry["id"] == session["model_id"]), None)
     if not model:
         raise Conflict("会话使用的模型已不存在")
-    return await app.state.agent.start(session, value.text, value.client_request_id, provider, model)
+    resolved = app.state.catalog.resolve(provider, model)
+    resolved["max_output_tokens"] = resolved["resolved_max_output_tokens"]
+    return await app.state.agent.start(session, value.text, value.client_request_id, provider, resolved)
 
 
 @app.post("/api/runs/{run_id}/cancel")
