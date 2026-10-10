@@ -19,7 +19,13 @@
 - [0001：项目初始化与文档管理](decisions/0001-项目初始化与文档管理.md)
 - [项目初始化记录](development/2026-10-10-项目初始化.md)
 
-调研、设计和实验目录目前提供说明与模板；后续工作产生实际内容时再新增记录。
+- [agent 首版需求](requirements/2026-10-10-agent首版.md)
+- [agent 参考实现调研](research/2026-10-10-agent参考实现.md)
+- [agent 首版设计](design/2026-10-10-agent首版.md)
+- [0002：agent 首版实现选择](decisions/0002-agent首版.md)
+- [工具消融实验计划](experiments/2026-10-10-工具消融计划.md)
+- [启动与使用说明](development/usage.md)
+- [agent 首版开发记录](development/2026-10-10-agent首版.md)
 
 ## 使用方式
 

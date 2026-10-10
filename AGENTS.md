@@ -1,12 +1,14 @@
 # 项目规则
 
-本项目计划使用 Python 和 Node.js 实现一个 agent。两者的职责划分随方案设计确定。
+本项目使用 Python/FastAPI 提供 agent 与业务接口，Node.js 工具链构建 React/TypeScript/Vite 浏览器应用。前后端分别放在 `backend` 和 `frontend`，业务状态由后端保存。首版范围见 [需求](doc/requirements/2026-10-10-agent首版.md) 和 [设计](doc/design/2026-10-10-agent首版.md)。
 
 ## 文档
 
 编写或修改本项目任何文档前，必须先加载并阅读 [shuorenhua](.agents/skills/shuorenhua/SKILL.md)，按照该 skill 的规则输出。遇到编辑边界不清楚的情况，按需阅读其参考文件。
 
 开始开发任务、记录需求、方案或结果时，先阅读 [开发规范](doc/development/workflow.md)，按 [文档索引](doc/README.md) 留存相关文档。含私人信息或凭证的材料放入 `.local`；正式文档随仓库公开。
+
+本轮首版开发遵循用户约定：不编写或运行测试用例、功能测试或真实模型联调，用户自行验证。交付时执行构建、类型、语法和文档检查，明确区分这些检查与功能验证。后续任务若调整验证方式，以用户的新要求为准。
 
 ## 设计与调研
 

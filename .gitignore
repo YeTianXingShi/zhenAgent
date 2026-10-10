@@ -25,6 +25,9 @@ node_modules/
 # 项目构建和测试产物；保留第三方 skill 自带的 dist
 /build/
 /dist/
+/frontend/dist/
+*.tsbuildinfo
+/workspace/
 /coverage/
 .coverage
 .coverage.*
