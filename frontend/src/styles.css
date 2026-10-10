@@ -277,3 +277,14 @@ label .field-note { margin: 0; }
 .tabs [data-slot="tabs-trigger"] { flex: none; height: auto; border-radius: 0; }
 .tabs [data-slot="tabs-trigger"]::after { display: none; }
 [data-slot="tabs-content"] { margin: 0; }
+
+.session-row { position: relative; flex-shrink: 0; }
+.session-row .session-item { padding-right: 59px; }
+.session-controls { position: absolute; right: 4px; top: 12px; display: flex; gap: 2px; }
+.session-controls [data-slot="button"] { width: 23px; min-height: 26px; padding: 0; color: #b9c9b6; }
+.session-controls [data-slot="button"]:hover { background: #405d4d; }
+@media (max-width: 650px) {
+  .session-row { width: 190px; }
+  .session-row .session-item { width: 100%; }
+  .session-controls { top: 6px; }
+}

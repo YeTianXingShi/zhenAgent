@@ -1,3 +1,4 @@
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/native-select"
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -64,6 +65,10 @@ export default function App() {
   const [connected, setConnected] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showNew, setShowNew] = useState(false)
+  const [sessionAction, setSessionAction] = useState<{ session: Session; kind: 'rename' | 'delete' } | null>(null)
+  const [sessionTitle, setSessionTitle] = useState('')
+  const [sessionBusy, setSessionBusy] = useState(false)
+  const [sessionProblem, setSessionProblem] = useState('')
   const dialogOpener = useRef<HTMLElement | null>(null)
   const rememberOpener = () => { dialogOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null }
   const restoreDialogFocus = () => { if (dialogOpener.current?.isConnected) dialogOpener.current.focus() }
@@ -142,6 +147,34 @@ export default function App() {
     setNewModel(providers.find(provider => provider.id === id)?.models[0]?.id || '')
   }
 
+  function manageSession(session: Session, kind: 'rename' | 'delete') {
+    rememberOpener(); setSessionTitle(session.title); setSessionProblem(''); setSessionAction({ session, kind })
+  }
+
+  async function saveSessionAction(event: React.FormEvent) {
+    event.preventDefault()
+    if (!sessionAction || sessionBusy) return
+    const { session, kind } = sessionAction
+    setSessionBusy(true); setSessionProblem('')
+    try {
+      if (kind === 'rename') {
+        await request(`/api/sessions/${session.id}`, send('PUT', { title: sessionTitle.trim() }))
+        setSessions(entries => entries.map(entry => entry.id === session.id ? { ...entry, title: sessionTitle.trim() } : entry))
+        if (selectedRef.current === session.id) await load(session.id)
+      } else {
+        await request(`/api/sessions/${session.id}`, { method: 'DELETE' })
+        setSessions(entries => entries.filter(entry => entry.id !== session.id))
+        if (selectedRef.current === session.id) {
+          selectedRef.current = null; detailRef.current = null
+          setSelected(null); setDetail(null); setText(''); submission.current = null
+        }
+      }
+      setSessionAction(null)
+      await refresh()
+    } catch (failure) { setSessionProblem((failure as Error).message) }
+    finally { setSessionBusy(false) }
+  }
+
   function openNew() {
     rememberOpener()
     setError('')
@@ -198,7 +231,7 @@ export default function App() {
       <div className="brand"><span className="brand-icon">z</span><div><strong>zhenAgent</strong><small>本地工作台</small></div><span className="version">0.1</span></div>
       <Button variant="ghost" className="new-session" onClick={openNew} disabled={!connected || !providers.length}>＋ 新建会话</Button>
       <div className="sidebar-label">会话记录 <span>{sessions.length}</span></div>
-      <nav className="session-list">{sessions.map(session => <Button variant="ghost" key={session.id} className={`session-item ${selected === session.id ? 'active' : ''}`} onClick={() => setSelected(session.id)}><span className={running(session.last_status || '') ? 'session-dot busy-dot' : 'session-dot'} /><div><strong>{session.title}</strong><small>{session.provider_name} · {session.model_id}</small></div></Button>)}{!sessions.length && <p className="sidebar-empty">创建第一个会话，<br />从一个明确的任务开始。</p>}</nav>
+      <nav className="session-list">{sessions.map(session => <div className="session-row" key={session.id}><Button variant="ghost" className={`session-item ${selected === session.id ? 'active' : ''}`} onClick={() => setSelected(session.id)}><span className={running(session.last_status || '') ? 'session-dot busy-dot' : 'session-dot'} /><div><strong>{session.title}</strong><small>{session.provider_name} · {session.model_id}</small></div></Button><div className="session-controls"><Button variant="ghost" size="icon" aria-label={`重命名会话：${session.title}`} title="重命名" onClick={() => manageSession(session, 'rename')}>✎</Button><Button variant="ghost" size="icon" aria-label={`删除会话：${session.title}`} title={running(session.last_status || '') ? '先停止任务再删除' : '删除会话'} disabled={running(session.last_status || '')} onClick={() => manageSession(session, 'delete')}>×</Button></div></div>)}{!sessions.length && <p className="sidebar-empty">创建第一个会话，<br />从一个明确的任务开始。</p>}</nav>
       <footer className="sidebar-footer"><Button variant="ghost" onClick={openSettings} disabled={!connected}><span>⚙</span>模型与运行设置 <span className="chevron">›</span></Button><div className="sidebar-state"><i className={connected ? 'online' : ''} />{connected ? '后端已连接' : '等待后端连接'}</div></footer>
     </aside>
     <main className="main-panel">
@@ -217,6 +250,7 @@ export default function App() {
         <p className="composer-note">页面关闭后任务继续执行。点击停止会保留已完成的操作。</p>
       </div>
     </main>
+    {sessionAction && <Dialog open onOpenChange={open => { if (!open && !sessionBusy) setSessionAction(null) }}><DialogContent className="modal new-dialog" showCloseButton={false} onCloseAutoFocus={event => { event.preventDefault(); restoreDialogFocus() }}><form onSubmit={saveSessionAction}><header className="modal-header"><DialogTitle>{sessionAction.kind === 'rename' ? '重命名会话' : '删除会话'}</DialogTitle></header><DialogDescription className="new-description">{sessionAction.kind === 'rename' ? '修改会话显示名称，不改变消息内容。' : `将永久删除“${sessionAction.session.title}”及其消息、任务、工具结果和事件记录，无法撤销。工作目录文件和模型服务配置会保留。`}</DialogDescription>{sessionAction.kind === 'rename' && <label>会话名称<Input autoFocus required maxLength={100} value={sessionTitle} disabled={sessionBusy} onChange={event => setSessionTitle(event.target.value)} /></label>}{sessionProblem && <p role="alert" className="inline-error">{sessionProblem}</p>}<footer className="form-actions"><Button type="button" variant="outline" disabled={sessionBusy} onClick={() => setSessionAction(null)}>取消</Button><Button type="submit" variant={sessionAction.kind === 'delete' ? 'destructive' : 'default'} disabled={sessionBusy || (sessionAction.kind === 'rename' && !sessionTitle.trim())}>{sessionBusy ? '处理中…' : sessionAction.kind === 'rename' ? '保存名称' : '永久删除'}</Button></footer></form></DialogContent></Dialog>}
     {showSettings && <SettingsPanel providers={providers} settings={settings} refresh={refresh} close={() => setShowSettings(false)} error={setError} restoreFocus={restoreDialogFocus} />}
     {showNew && <Dialog open onOpenChange={setShowNew}><DialogContent className="modal new-dialog" showCloseButton={false} onCloseAutoFocus={event => { event.preventDefault(); restoreDialogFocus() }}><form onSubmit={create}><header className="modal-header"><div><span className="eyebrow">新的开始</span><DialogTitle>新建会话</DialogTitle></div><Button variant="ghost" type="button" className="icon-button" aria-label="关闭新建会话" onClick={() => setShowNew(false)}>×</Button></header>{error && <p className="inline-error" role="alert">{error}</p>}<DialogDescription className="new-description">每个会话固定服务和模型，需要切换时新建会话。</DialogDescription><label>模型服务<NativeSelect value={newProvider} required onChange={event => chooseProvider(event.target.value)}>{providers.map(provider => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</NativeSelect></label><label>模型<NativeSelect value={newModel} required onChange={event => setNewModel(event.target.value)}>{providers.find(provider => provider.id === newProvider)?.models.map(model => <option key={model.id} value={model.id}>{model.resolved_label || model.label || model.id}</option>)}</NativeSelect></label><footer className="form-actions"><Button className="primary" disabled={busy || !newProvider || !newModel}>创建会话</Button></footer></form></DialogContent></Dialog>}
   </div>

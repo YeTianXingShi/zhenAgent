@@ -13,7 +13,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .agent import Agent, Conflict, TERMINAL
 from .catalog import Catalog
 from .config import Limits, Settings
-from .models import ApprovalInput, ProviderInput, RunInput, SessionInput
+from .models import ApprovalInput, ProviderInput, RunInput, SessionInput, SessionRename
 from .responses import Responses, reasoning_text
 from .storage import Secrets, Store, encode, new_id, now
 
@@ -211,6 +211,26 @@ async def create_session(value: SessionInput):
         session_id, value.title, value.provider_id, value.model_id, timestamp, timestamp,
     ))
     return await require_session(session_id)
+
+
+@app.put("/api/sessions/{session_id}")
+async def rename_session(session_id: str, value: SessionRename):
+    async with app.state.agent.lock:
+        await require_session(session_id)
+        await store().execute("UPDATE sessions SET title=?,title_custom=1,updated_at=? WHERE id=?", (value.title.strip(), now(), session_id))
+        return await require_session(session_id)
+
+
+@app.delete("/api/sessions/{session_id}", status_code=204)
+async def delete_session(session_id: str):
+    async with app.state.agent.lock:
+        await require_session(session_id)
+        active = app.state.agent.active
+        if active and await store().one("SELECT id FROM runs WHERE id=? AND session_id=?", (active.id, session_id)):
+            raise Conflict("会话任务仍在执行或收尾，请先停止任务再删除")
+        if await store().one("SELECT id FROM runs WHERE session_id=? AND status IN ('running','awaiting_approval') LIMIT 1", (session_id,)):
+            raise Conflict("会话任务正在执行，请先停止任务再删除")
+        await store().delete_session(session_id)
 
 
 @app.get("/api/sessions/{session_id}")

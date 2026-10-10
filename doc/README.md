@@ -15,6 +15,8 @@
 
 ## 已有记录
 
+- [会话名称与物理删除](development/2026-10-10-会话管理.md)
+
 - [响应接收上限文案](development/2026-10-10-响应接收上限文案.md)
 
 - [shadcn/ui 接入](development/2026-10-10-shadcn接入.md)

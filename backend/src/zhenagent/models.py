@@ -116,3 +116,7 @@ class EditFile(ToolArgs):
 
 class ExecuteCommand(ToolArgs):
     command: str = Field(min_length=1, max_length=10000)
+
+
+class SessionRename(BaseModel):
+    title: str = Field(min_length=1, max_length=100, pattern=r"\S")
