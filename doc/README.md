@@ -26,6 +26,7 @@
 - [工具消融实验计划](experiments/2026-10-10-工具消融计划.md)
 - [启动与使用说明](development/usage.md)
 - [agent 首版开发记录](development/2026-10-10-agent首版.md)
+- [运行上限输入校验修复](development/2026-10-10-运行上限输入校验.md)
 
 ## 使用方式
 
