@@ -10,14 +10,14 @@ type Props = { providers: Provider[]; settings: RuntimeSettings | null; refresh:
 
 const emptyModel = (): ModelProfile => ({ id: '', label: '', reasoning_effort: null, max_output_tokens: null, context_tokens: null, temperature: null })
 const editableModel = (model: ModelProfile): ModelProfile => ({ id: model.id, label: model.label, reasoning_effort: model.reasoning_effort ?? null, max_output_tokens: model.max_output_tokens ?? null, context_tokens: model.context_tokens ?? null, temperature: model.temperature ?? null })
-const limitFields: Record<keyof Limits, { label: string; min: number; max: number; step: number | 'any' }> = {
+const limitFields: Record<keyof Limits, { label: string; min: number; max: number; step: number | 'any'; note?: string }> = {
   max_model_calls: { label: '任务模型调用上限', min: 1, max: 200, step: 1 },
   command_timeout: { label: '单条命令超时（秒）', min: 1, max: 3600, step: 1 },
   request_timeout: { label: '模型请求超时（秒）', min: 1, max: 1800, step: 1 },
   max_retries: { label: '额外重试次数', min: 0, max: 10, step: 1 },
   retry_delay: { label: '初次重试等待（秒）', min: 0.1, max: 30, step: 'any' },
   command_output_bytes: { label: '命令输出上限（字节）', min: 1024, max: 16777216, step: 1 },
-  model_output_bytes: { label: '模型响应上限（字节）', min: 1024, max: 16777216, step: 1 },
+  model_output_bytes: { label: '单次响应接收上限（字节）', min: 1024, max: 16777216, step: 1, note: '限制单次请求接收的流式响应数据，包括正文、思考、工具参数和事件数据。超过后中断本次请求；与模型配置中的上下文和输出 token 上限分别生效。' },
   read_file_bytes: { label: '文件读取与写入上限（字节）', min: 1024, max: 4194304, step: 1 },
   tool_context_bytes: { label: '送入模型的工具结果上限（字节）', min: 1024, max: 262144, step: 1 },
 }
@@ -176,7 +176,7 @@ export default function SettingsPanel({ providers, settings, refresh, close, err
         </form>
       </div></TabsContent><TabsContent value="runtime"><form className="runtime-form" onSubmit={saveLimits}>
         <div className="workspace-note"><span className="eyebrow">当前工作目录</span><code>{settings?.workspace_root || '后端未连接'}</code><p>工作目录在后端启动配置中设置。命令在本机执行，目录不是沙箱。</p></div>
-        {limits && <div className="limits-grid">{Object.entries(limitFields).map(([field, rule]) => <label key={field}>{rule.label}<Input required type="number" min={rule.min} max={rule.max} step={rule.step} value={limits[field as keyof Limits]} onChange={event => setLimits({ ...limits, [field]: Number(event.target.value) })} /></label>)}</div>}
+        {limits && <div className="limits-grid">{Object.entries(limitFields).map(([field, rule]) => <label key={field}>{rule.label}<Input required type="number" min={rule.min} max={rule.max} step={rule.step} value={limits[field as keyof Limits]} onChange={event => setLimits({ ...limits, [field]: Number(event.target.value) })} />{rule.note && <span className="field-note">{rule.note}</span>}</label>)}</div>}
         <p className="field-note">请求重试也计入模型调用次数。重试等待按倍数增加，最长 30 秒。</p>
         <footer className="form-actions"><Button className="primary" disabled={busy || !limits}>{busy ? '保存中…' : '保存运行上限'}</Button></footer>
       </form></TabsContent>

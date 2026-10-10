@@ -42,6 +42,8 @@ class Agent:
 
     async def start(self, session: dict, text: str, client_request_id: str, provider: dict, model: dict) -> dict:
         async with self.lock:
+            if not await self.store.one("SELECT id FROM sessions WHERE id=?", (session["id"],)):
+                raise Conflict("会话已删除")
             previous = await self.store.one(
                 "SELECT * FROM runs WHERE session_id=? AND client_request_id=?",
                 (session["id"], client_request_id),
@@ -63,7 +65,7 @@ class Agent:
             )
             await self.store.add_items(session["id"], run_id, [{"role": "user", "content": text}])
             title = text.strip().replace("\n", " ")[:35] if session["title"] == "新会话" else session["title"]
-            await self.store.execute("UPDATE sessions SET title=?,updated_at=? WHERE id=?", (title, timestamp, session["id"]))
+            await self.store.execute("UPDATE sessions SET title=CASE WHEN title_custom=0 AND title='新会话' THEN ? ELSE title END,updated_at=? WHERE id=?", (title, timestamp, session["id"]))
             await self.store.event(run_id, "run.status", {"status": "running"})
             task = asyncio.create_task(self.run(run_id, session, dict(provider), dict(model), key, self.limits.model_copy()))
             self.active = ActiveRun(run_id, task)

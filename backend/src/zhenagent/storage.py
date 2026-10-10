@@ -117,6 +117,7 @@ class Store:
         """)
         for table, column, definition in (
             ("providers", "catalog_provider_id", "TEXT"),
+            ("sessions", "title_custom", "INTEGER NOT NULL DEFAULT 0"),
             ("attempts", "reasoning", "TEXT NOT NULL DEFAULT ''"),
             ("attempts", "context_limit", "INTEGER"),
             ("items", "attempt_id", "TEXT REFERENCES attempts(id)"),
@@ -191,3 +192,17 @@ class Store:
             await self.reconcile(run["session_id"], run["id"], reason)
             await self.run_status(run["id"], "interrupted", reason)
         await self.execute("UPDATE attempts SET status='interrupted',error='后端已重启' WHERE status='running'")
+
+    async def delete_session(self, session_id: str):
+        async with self.lock:
+            try:
+                await self.db.execute("BEGIN IMMEDIATE")
+                await self.db.execute("DELETE FROM items WHERE session_id=?", (session_id,))
+                for table in ("events", "tools", "attempts"):
+                    await self.db.execute(f"DELETE FROM {table} WHERE run_id IN (SELECT id FROM runs WHERE session_id=?)", (session_id,))
+                await self.db.execute("DELETE FROM runs WHERE session_id=?", (session_id,))
+                await self.db.execute("DELETE FROM sessions WHERE id=?", (session_id,))
+                await self.db.commit()
+            except BaseException:
+                await self.db.rollback()
+                raise
