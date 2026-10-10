@@ -6,6 +6,8 @@
 
 ## 记录
 
+- [UI 组件库调研](2026-10-10-ui组件库.md)
+
 - [agent 参考实现](2026-10-10-agent参考实现.md)
 - [OpenCode 模型默认参数来源](2026-10-10-opencode模型默认参数.md)
 - [Models.dev 公共接口](2026-10-10-models-dev接口.md)
