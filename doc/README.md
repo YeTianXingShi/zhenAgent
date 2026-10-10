@@ -21,6 +21,7 @@
 
 - [agent 首版需求](requirements/2026-10-10-agent首版.md)
 - [agent 参考实现调研](research/2026-10-10-agent参考实现.md)
+- [OpenCode 模型默认参数来源](research/2026-10-10-opencode模型默认参数.md)
 - [agent 首版设计](design/2026-10-10-agent首版.md)
 - [0002：agent 首版实现选择](decisions/0002-agent首版.md)
 - [工具消融实验计划](experiments/2026-10-10-工具消融计划.md)
