@@ -171,7 +171,7 @@ h1 { margin: 7px 0 0; font-size: 17px; font-weight: 500; }
 .icon-button { background: none; color: #98a48a; font-size: 24px; padding: 5px 9px; }
 .tabs { display: flex; gap: 25px; border-bottom: 1px solid var(--line); padding: 0 28px; }
 .tabs button { background: none; font-size: 12px; color: #8b977d; padding: 14px 0; border-bottom: 2px solid transparent; }
-.tabs button.active { color: #385d40; border-bottom-color: #688858; }
+.tabs button[data-state="active"] { color: #385d40; border-bottom-color: #688858; }
 .notice { margin: 15px 28px; font-size: 12px; }
 .success { color: #60804d; background: #e9f1e0; border-radius: 6px; padding: 11px 15px; }
 .settings-grid { display: grid; grid-template-columns: 190px 1fr; min-height: 480px; }
@@ -260,3 +260,20 @@ label .field-note { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Keep the workbench layout while shadcn owns control states and dialog behavior. */
+[data-slot="button"] { height: auto; min-height: 36px; }
+.session-item[data-slot="button"] { justify-content: flex-start; white-space: normal; }
+.provider-list [data-slot="button"] { white-space: normal; }
+.text-button[data-slot="button"], .icon-button[data-slot="button"] { min-height: 0; }
+[data-slot="native-select-wrapper"] { width: 100%; }
+[data-slot="native-select"] { padding-right: 36px; }
+[data-slot="dialog-content"].modal { display: block; padding: 0; max-width: calc(100% - 24px); border: 1px solid var(--line); }
+[data-slot="dialog-content"].new-dialog { width: 450px; padding: 0 28px 25px; }
+[data-slot="dialog-overlay"] { background: #182b2390; backdrop-filter: blur(4px); }
+.modal-header [data-slot="dialog-title"] { margin: 9px 0 0; font-size: 20px; font-weight: 500; line-height: 1.3; }
+.new-description { color: #8c9b7a; font-size: 11px; line-height: 1.8; margin: 0 0 22px; }
+.tabs[data-slot="tabs-list"] { width: 100%; height: auto; justify-content: flex-start; border-radius: 0; background: transparent; }
+.tabs [data-slot="tabs-trigger"] { flex: none; height: auto; border-radius: 0; }
+.tabs [data-slot="tabs-trigger"]::after { display: none; }
+[data-slot="tabs-content"] { margin: 0; }

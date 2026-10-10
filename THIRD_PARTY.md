@@ -1,5 +1,15 @@
 # 第三方来源
 
+## shadcn/ui
+
+- 来源：[shadcn-ui/ui](https://github.com/shadcn-ui/ui)。
+- 获取日期：2026-10-10，官方 `new-york-v4` registry 快照。
+- 源码位置：`frontend/src/components/ui/`，包含 Button、Input、Textarea、NativeSelect、Dialog、Tabs。
+- 原始文件入口：`https://ui.shadcn.com/r/styles/new-york-v4/{组件名}.json`，组件名为 `button`、`input`、`textarea`、`native-select`、`dialog`、`tabs`。
+- 授权：[原有 MIT 许可证](frontend/SHADCN-LICENSE.md)，版权归 `2023 shadcn`。
+
+本项目把 registry 中的 `cn` 导入改为本地 `@/lib/utils`，调整 Dialog 内部 Button 导入，并将默认关闭文案改为中文。主题和布局适配位于 `frontend/src/ui.css` 与 `styles.css`。组件源码随本项目维护；更新时检查本地改动并保留上游版权声明。Radix、Lucide、Tailwind 等依赖版本保存在 `frontend/pnpm-lock.yaml`。
+
 ## shuorenhua
 
 - 来源：[MrGeDiao/shuorenhua](https://github.com/MrGeDiao/shuorenhua)。
