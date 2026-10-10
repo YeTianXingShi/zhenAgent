@@ -1,0 +1,3 @@
+# 保留上游 Markdown 的双空格换行，检查本项目文件时仍使用默认规则。
+.agents/skills/shuorenhua/**/*.md whitespace=-blank-at-eol
+.agents/skills/shuorenhua/**/*.md.txt whitespace=-blank-at-eol

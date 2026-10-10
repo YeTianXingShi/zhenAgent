@@ -1,0 +1,40 @@
+# 私人材料
+/.local/
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python 虚拟环境、缓存和安装产物
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# Node.js 依赖和包管理缓存
+node_modules/
+.npm/
+.pnpm-store/
+
+# 项目构建和测试产物；保留第三方 skill 自带的 dist
+/build/
+/dist/
+/coverage/
+.coverage
+.coverage.*
+htmlcov/
+.nyc_output/
+.cache/
+
+# 系统临时文件
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
