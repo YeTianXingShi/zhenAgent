@@ -38,7 +38,7 @@ class Catalog:
     @staticmethod
     def parse(data) -> dict[str, dict]:
         if not isinstance(data, dict):
-            raise ValueError("Models.dev 返回的目录格式无效")
+            raise ValueError("Models.dev 返回的模型信息格式无效")
         providers = {}
         for provider_id, provider in data.items():
             if (not isinstance(provider, dict) or not isinstance(provider.get("models"), dict)
@@ -83,7 +83,7 @@ class Catalog:
                     "models": models,
                 }
         if not providers:
-            raise ValueError("Models.dev 目录没有可用的模型信息")
+            raise ValueError("Models.dev 没有可用的模型信息")
         return providers
 
     def load(self):
@@ -99,7 +99,7 @@ class Catalog:
             self.providers = self.parse(saved["data"])
             self.fetched_at = fetched_at
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
-            self.error = "Models.dev 本地缓存无法读取，将重新获取目录"
+            self.error = "Models.dev 本地缓存无法读取，将重新获取模型信息"
 
     def stale(self) -> bool:
         return not self.fetched_at or (
@@ -119,7 +119,7 @@ class Catalog:
                         async for chunk in response.aiter_bytes():
                             content.extend(chunk)
                             if len(content) > MAX_DOWNLOAD_BYTES:
-                                raise ValueError("Models.dev 目录超过下载大小限制")
+                                raise ValueError("Models.dev 模型信息超过下载大小限制")
                 data = json.loads(content)
                 providers = self.parse(data)
                 fetched_at = now()
@@ -140,7 +140,7 @@ class Catalog:
                 self.error = None
                 return True
             except (httpx.HTTPError, TimeoutError, OSError, ValueError) as error:
-                self.error = f"Models.dev 目录更新失败（{type(error).__name__}）"
+                self.error = f"Models.dev 模型信息更新失败（{type(error).__name__}）"
                 return False
 
     async def maintain(self):

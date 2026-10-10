@@ -152,7 +152,7 @@ async def refresh_catalog():
 async def catalog_provider(catalog_id: str):
     provider = app.state.catalog.providers.get(catalog_id)
     if not provider:
-        raise HTTPException(404, "Models.dev 缓存中没有该服务，请更新目录或使用手动配置")
+        raise HTTPException(404, "Models.dev 缓存中没有该服务，请更新模型信息或使用手动配置")
     return {**provider, "models": list(provider["models"].values())}
 
 

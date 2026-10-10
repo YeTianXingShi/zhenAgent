@@ -2,7 +2,7 @@
 
 本机使用的 Web 工具 agent。Python/FastAPI 后端负责模型请求、工具执行、审批和历史保存；Node.js 工具链构建 React/TypeScript/Vite 前端，两者独立运行。
 
-首版代码已实现 Responses 流式对话、可展开的模型思考文本、多个模型服务配置、会话历史、文件工具、命令逐次审批、停止与受限重试。新建文件以完整内容预览，已有文件以增删差异预览。模型配置接入 Models.dev 公共目录，可选择 DeepSeek 的 `deepseek-flash` 或其他 Responses 服务。当前已做构建、类型和语法检查；功能验证与真实服务联调由使用者完成。
+首版代码已实现 Responses 流式对话、可展开的模型思考文本、多个模型服务配置、会话历史、文件工具、命令逐次审批、停止与受限重试。新建文件以完整内容预览，已有文件以增删差异预览。模型配置从 Models.dev 获取模型信息，可选择 DeepSeek 的 `deepseek-flash` 或其他 Responses 服务。当前已做构建、类型和语法检查；功能验证与真实服务联调由使用者完成。
 
 ## 启动
 
@@ -26,7 +26,7 @@ uv run --project backend --locked uvicorn zhenagent.api:app --host 127.0.0.1 --p
 pnpm --dir frontend dev
 ```
 
-打开 [本地工作台](http://127.0.0.1:5173)，进入“模型与运行设置”，添加服务，在“参数来源”选择对应的 Models.dev 服务，再选模型并保存 API key。服务必须支持 Responses。已有配置会保留，点击模型的“恢复目录默认”并保存即可取消旧参数覆盖。更多配置、工具边界和历史保存方式见 [使用说明](doc/development/usage.md)。
+打开 [本地工作台](http://127.0.0.1:5173)，进入“模型与运行设置”，添加服务，在“参数来源”选择对应的 Models.dev 服务，再选模型并保存 API key。服务必须支持 Responses。已有配置会保留，点击模型的“恢复默认参数”并保存即可取消旧参数覆盖。更多配置、工具边界和历史保存方式见 [使用说明](doc/development/usage.md)。
 
 API key 与会话数据库默认保存在被 Git 忽略的 `.local`。文件工具限制在工作目录内；经批准的命令拥有本机权限，工作目录不是沙箱。后端只启动一个进程，不使用 `--workers` 或开发自动重载。
 
