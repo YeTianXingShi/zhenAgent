@@ -13,7 +13,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .agent import Agent, Conflict, TERMINAL
 from .config import Limits, Settings
 from .models import ApprovalInput, ProviderInput, RunInput, SessionInput
-from .responses import Responses
+from .responses import Responses, reasoning_text
 from .storage import Secrets, Store, encode, new_id, now
 
 
@@ -190,6 +190,8 @@ async def session_detail(session_id: str):
     session = await require_session(session_id)
     runs = await store().rows("SELECT * FROM runs WHERE session_id=? ORDER BY created_at", (session_id,))
     for run in runs:
+        legacy = await store().rows("SELECT body FROM items WHERE run_id=? AND attempt_id IS NULL ORDER BY id", (run["id"],))
+        run["legacy_reasoning"] = reasoning_text([json.loads(item["body"]) for item in legacy])
         run["attempts"] = await store().rows("SELECT * FROM attempts WHERE run_id=? ORDER BY round,attempt", (run["id"],))
         for attempt in run["attempts"]:
             attempt["usage"] = json.loads(attempt["usage"]) if attempt["usage"] else None

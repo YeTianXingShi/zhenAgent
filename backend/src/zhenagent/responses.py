@@ -7,6 +7,23 @@ import httpx
 from .config import Limits
 
 
+def reasoning_text(items: list[dict]) -> str:
+    sections: list[str] = []
+    for item in items:
+        if item.get("type") != "reasoning":
+            continue
+        content = item.get("content") or item.get("summary") or []
+        if isinstance(content, str):
+            sections.append(content)
+        elif isinstance(content, list):
+            sections.append("".join(
+                part["text"] for part in content
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+                and part.get("type") in {"reasoning_text", "summary_text"}
+            ))
+    return "\n\n".join(section for section in sections if section)
+
+
 class ModelError(Exception):
     def __init__(self, message: str, retryable: bool = False, retry_after: float = 0):
         super().__init__(message)

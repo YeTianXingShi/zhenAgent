@@ -79,11 +79,14 @@ class ToolRunner:
         new = args.content if name == "write_file" else self.edited(old, args)
         if len(new.encode("utf-8")) > self.limits.read_file_bytes:
             raise ToolError("文件内容超过写入上限")
-        diff = "".join(difflib.unified_diff(
+        diff_lines = difflib.unified_diff(
             old.splitlines(keepends=True), new.splitlines(keepends=True),
-            fromfile=f"原文件/{self.relative(path)}", tofile=f"新文件/{self.relative(path)}",
-        ))
-        return {"path": self.relative(path), "fingerprint": fingerprint, "diff": diff, "content": new}
+            fromfile="/dev/null" if fingerprint is None else f"原文件/{self.relative(path)}",
+            tofile=f"新文件/{self.relative(path)}",
+        )
+        diff = "".join(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n" for line in diff_lines)
+        return {"path": self.relative(path), "fingerprint": fingerprint, "diff": diff, "content": new,
+                "operation": "create" if fingerprint is None else "update"}
 
     def edited(self, old: str, args: EditFile) -> str:
         if old.count(args.old_text) != 1:

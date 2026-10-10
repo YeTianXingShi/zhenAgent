@@ -22,9 +22,10 @@ export const send = (method: string, value: unknown): RequestInit => ({ method, 
 export type ModelProfile = { id: string; label: string; reasoning_effort: string; max_output_tokens: number }
 export type Provider = { id: string; name: string; base_url: string; models: ModelProfile[]; has_api_key: boolean }
 export type Session = { id: string; title: string; provider_id: string; model_id: string; provider_name?: string; updated_at: string; last_status?: string }
-export type Attempt = { id: string; round: number; attempt: number; status: string; text: string; error: string | null; usage: { input_tokens?: number; output_tokens?: number } | null }
-export type Tool = { id: string; round: number; name: string; arguments: string; status: string; error: string | null; approval_status: string | null; preview: { command?: string; cwd?: string; warning?: string; path?: string; diff?: string } | null; result: Record<string, unknown> | null; live_output: string }
-export type Run = { id: string; input_text: string; status: string; error: string | null; call_count: number; attempts: Attempt[]; tools: Tool[]; created_at: string }
+export type Attempt = { id: string; round: number; attempt: number; status: string; text: string; reasoning: string; error: string | null; usage: { input_tokens?: number; output_tokens?: number } | null }
+export type ToolPreview = { command?: string; cwd?: string; warning?: string; path?: string; diff?: string; content?: string; fingerprint?: string | null; operation?: 'create' | 'update' }
+export type Tool = { id: string; round: number; name: string; arguments: string; status: string; error: string | null; approval_status: string | null; preview: ToolPreview | null; result: Record<string, unknown> | null; live_output: string }
+export type Run = { id: string; input_text: string; status: string; error: string | null; call_count: number; attempts: Attempt[]; tools: Tool[]; created_at: string; legacy_reasoning: string }
 export type Detail = Session & { runs: Run[]; event_cursor: number }
 export type Limits = { max_model_calls: number; command_timeout: number; request_timeout: number; max_retries: number; retry_delay: number; command_output_bytes: number; model_output_bytes: number; read_file_bytes: number; tool_context_bytes: number }
 export type Settings = { workspace_root: string; limits: Limits; active_run: { id: string } | null }

@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass
 
 from .config import Limits
-from .responses import ModelError, Responses
+from .responses import ModelError, Responses, reasoning_text
 from .storage import Secrets, Store, encode, new_id, now
 from .tools import ToolError, ToolRunner, context_result, definitions
 
@@ -164,14 +164,28 @@ class Agent:
                 )
                 await self.store.event(run_id, "attempt.started", {"id": attempt_id, "round": round_number, "attempt": retry + 1, "call_count": call_count})
                 text = ""
+                reasoning = ""
+                reasoning_parts: dict[tuple[int, int, str], str] = {}
 
                 async def model_event(event: dict):
-                    nonlocal text
-                    if event.get("type") == "response.output_text.delta":
+                    nonlocal text, reasoning
+                    kind = event.get("type", "")
+                    if kind == "response.output_text.delta":
                         delta = self.secrets.redact(str(event.get("delta", "")))
                         text += delta
                         await self.store.execute("UPDATE attempts SET text=? WHERE id=?", (text, attempt_id))
                         await self.store.event(run_id, "attempt.delta", {"id": attempt_id, "delta": delta})
+                    elif kind in {"response.reasoning_text.delta", "response.reasoning_text.done",
+                                  "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done"}:
+                        section = (event.get("output_index", 0), event.get("content_index", event.get("summary_index", 0)),
+                                   "summary" if "summary" in kind else "content")
+                        if kind.endswith(".delta"):
+                            reasoning_parts[section] = reasoning_parts.get(section, "") + str(event.get("delta", ""))
+                        elif isinstance(event.get("text"), str):
+                            reasoning_parts[section] = event["text"]
+                        reasoning = self.secrets.redact("\n\n".join(reasoning_parts[index] for index in sorted(reasoning_parts)))
+                        await self.store.execute("UPDATE attempts SET reasoning=? WHERE id=?", (reasoning, attempt_id))
+                        await self.store.event(run_id, "attempt.reasoning", {"id": attempt_id})
 
                 try:
                     result = await self.responses.generate(provider["base_url"], key, body, limits, model_event)
@@ -179,8 +193,10 @@ class Agent:
                         part.get("text", "") for item in result["output"] if item.get("type") == "message"
                         for part in item.get("content", []) if part.get("type") == "output_text"
                     )
-                    await self.store.execute("UPDATE attempts SET status='completed',text=?,usage=? WHERE id=?", (
-                        self.secrets.redact(canonical) or text, encode(result.get("usage", {})), attempt_id,
+                    await self.store.execute("UPDATE attempts SET status='completed',text=?,reasoning=?,usage=? WHERE id=?", (
+                        self.secrets.redact(canonical) or text,
+                        self.secrets.redact(reasoning_text(result["output"])) or reasoning,
+                        encode(result.get("usage", {})), attempt_id,
                     ))
                     await self.store.event(run_id, "attempt.completed", {"id": attempt_id})
                     break
@@ -203,7 +219,7 @@ class Agent:
                 raise ModelError("模型返回了缺失或重复的工具调用 ID，本次工具未执行")
             if any(item.get("type") == "custom_tool_call" for item in output_items):
                 raise ModelError("首版只接受 function 工具调用")
-            await self.store.add_items(session["id"], run_id, output_items)
+            await self.store.add_items(session["id"], run_id, output_items, attempt_id)
             for call in calls:
                 await self.store.execute(
                     "INSERT INTO tools(id,run_id,call_id,name,arguments,status,round) VALUES(?,?,?,?,?,'pending',?)",

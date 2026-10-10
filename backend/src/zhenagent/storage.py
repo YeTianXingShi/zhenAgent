@@ -92,12 +92,13 @@ class Store:
             );
             CREATE TABLE IF NOT EXISTS items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL REFERENCES sessions(id),
-                run_id TEXT NOT NULL REFERENCES runs(id), body TEXT NOT NULL
+                run_id TEXT NOT NULL REFERENCES runs(id), body TEXT NOT NULL,
+                attempt_id TEXT REFERENCES attempts(id)
             );
             CREATE TABLE IF NOT EXISTS attempts (
                 id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), round INTEGER NOT NULL,
                 attempt INTEGER NOT NULL, status TEXT NOT NULL, text TEXT NOT NULL DEFAULT '',
-                error TEXT, usage TEXT, created_at TEXT NOT NULL
+                error TEXT, usage TEXT, created_at TEXT NOT NULL, reasoning TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS tools (
                 id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), call_id TEXT NOT NULL,
@@ -112,7 +113,16 @@ class Store:
             CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS events_run ON events(run_id, id);
             CREATE INDEX IF NOT EXISTS items_session ON items(session_id, id);
+            CREATE INDEX IF NOT EXISTS items_run ON items(run_id, id);
         """)
+        for table, column, definition in (
+            ("attempts", "reasoning", "TEXT NOT NULL DEFAULT ''"),
+            ("items", "attempt_id", "TEXT REFERENCES attempts(id)"),
+        ):
+            async with self.db.execute(f"PRAGMA table_info({table})") as cursor:
+                columns = {row["name"] for row in await cursor.fetchall()}
+            if column not in columns:
+                await self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         await self.db.commit()
 
     async def close(self):
@@ -138,11 +148,11 @@ class Store:
             "SELECT body FROM items WHERE session_id=? ORDER BY id", (session_id,)
         )]
 
-    async def add_items(self, session_id: str, run_id: str, items: list[dict]):
+    async def add_items(self, session_id: str, run_id: str, items: list[dict], attempt_id: str | None = None):
         async with self.lock:
             await self.db.executemany(
-                "INSERT INTO items(session_id,run_id,body) VALUES(?,?,?)",
-                [(session_id, run_id, encode(item)) for item in items],
+                "INSERT INTO items(session_id,run_id,body,attempt_id) VALUES(?,?,?,?)",
+                [(session_id, run_id, encode(item), attempt_id) for item in items],
             )
             await self.db.commit()
 

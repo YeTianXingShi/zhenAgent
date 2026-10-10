@@ -3,6 +3,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { API, request, send, running, statuses, toolNames, type Provider, type Session, type Detail, type Run, type Tool, type Settings } from './api'
 import SettingsPanel from './Settings'
+import FilePreview, { isNewFile } from './FilePreview'
+import Reasoning from './Reasoning'
 
 const activeRun = (detail: Detail | null) => detail?.runs.find(run => running(run.status))
 
@@ -11,11 +13,12 @@ function ToolCard({ tool, act, busy }: { tool: Tool; act: (id: string, value: bo
   let args: Record<string, unknown> = {}
   try { args = JSON.parse(tool.arguments) } catch { /* 参数错误由后端报告 */ }
   const output = tool.result?.output as string | undefined || tool.live_output
+  const create = tool.preview?.diff !== undefined && isNewFile(tool.preview)
   return <details className={`tool-card ${awaiting ? 'approval-card' : ''}`} open={awaiting || undefined}>
-    <summary><span className="tool-symbol">{tool.name === 'execute_command' ? '›_' : '↳'}</span><span className="tool-name">{toolNames[tool.name] || tool.name}<small>{String(args.path || args.command || args.pattern || '').slice(0, 100)}</small></span><span className={`status ${tool.status}`}>{statuses[tool.status] || tool.status}</span></summary>
+    <summary><span className="tool-symbol">{tool.name === 'execute_command' ? '›_' : create ? '+' : '↳'}</span><span className="tool-name">{create ? '新建文件' : toolNames[tool.name] || tool.name}<small>{String(args.path || args.command || args.pattern || '').slice(0, 100)}</small></span><span className={`status ${tool.status}`}>{statuses[tool.status] || tool.status}</span></summary>
     <div className="tool-body">
       {tool.preview?.command && <><div className="command-label"><span>将在本机执行</span><code>{tool.preview.cwd}</code></div><pre className="command"><code>{tool.preview.command}</code></pre><p className="field-note">{tool.preview.warning}</p></>}
-      {tool.preview?.diff !== undefined && <><p className="field-note">文件：{tool.preview.path}</p><pre className="diff"><code>{tool.preview.diff || '内容没有变化'}</code></pre></>}
+      {tool.preview?.diff !== undefined && <FilePreview preview={tool.preview} />}
       {!tool.preview && <pre className="tool-args">{JSON.stringify(args, null, 2)}</pre>}
       {output && <pre className="command-output">{output}</pre>}
       {tool.result && !output && <pre className="tool-result">{JSON.stringify(tool.result, null, 2)}</pre>}
@@ -30,9 +33,11 @@ function RunView({ run, act, approvalBusy }: { run: Run; act: (id: string, value
   return <article className="run">
     <div className="user-message"><span className="message-label">你</span><div>{run.input_text}</div></div>
     <div className="agent-message"><div className="agent-avatar">z</div><div className="agent-content"><div className="agent-label">zhenAgent <span className={`status ${run.status}`}>{statuses[run.status]}</span></div>
+      {run.legacy_reasoning && <Reasoning text={run.legacy_reasoning} status="completed" legacy />}
       {rounds.map(round => <Fragment key={round}>{run.attempts.filter(attempt => attempt.round === round).map(attempt => <div key={attempt.id} className={`attempt ${attempt.status}`}>
+        {attempt.reasoning && <Reasoning text={attempt.reasoning} status={attempt.status} />}
         {attempt.text && <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer">{children}</a> }}>{attempt.text}</ReactMarkdown></div>}
-        {attempt.status === 'running' && <span className="working"><i />模型生成中</span>}
+        {attempt.status === 'running' && <span className="working"><i />{attempt.reasoning && !attempt.text ? '模型思考中' : '模型生成中'}</span>}
         {attempt.error && <p className="attempt-error">尝试 {attempt.attempt} 已中断：{attempt.error}</p>}
         {attempt.usage && <span className="usage">输入 {attempt.usage.input_tokens ?? '—'} · 输出 {attempt.usage.output_tokens ?? '—'} tokens</span>}
       </div>)}
