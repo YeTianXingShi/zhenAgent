@@ -22,14 +22,38 @@ pnpm --dir frontend install --frozen-lockfile
 
 路径可为绝对路径，相对路径以项目根目录为基准。默认目录会自动创建；工作目录不能位于私有数据目录内。改变配置后重启后端，新任务使用新的工作目录，旧记录保留原操作内容。
 
-在两个终端分别运行：
+### 管理脚本运行
+
+推荐使用项目提供的管理脚本在后台运行前后端服务。脚本默认绑定 `0.0.0.0`，同时监听本地 IP 与当前设备在局域网的 IP：
 
 ```sh
-uv run --project backend --locked uvicorn zhenagent.api:app --host 127.0.0.1 --port 8000
+./start.sh      # 启动后端与前端（自动获取并展示局域网访问地址）
+./stop.sh       # 停止后端与前端
+./restart.sh    # 重启服务
+./status.sh     # 查看服务状态（显示本地与局域网地址）
+```
+
+脚本支持传入 `all`（默认）、`backend` 或 `frontend` 参数单独管理对应服务。例如：
+
+```sh
+./start.sh backend     # 仅启动后端
+./restart.sh frontend  # 仅重启前端
+```
+
+进程 PID 记录在 `.local/run/`，启动记录与标准输出日志写入 `.local/logs/backend.log` 和 `.local/logs/frontend.log`。日志文件开头与终端汇总均会展示本地访问地址与当前设备的局域网访问地址。停止脚本会递归终结父子进程树，避免孤儿进程残留占用端口。
+
+后端默认允许私有局域网 IP（RFC 1918）跨域调用，前端默认自适应当前访问的主机名连接后端，无需手动修改局域网连接地址。
+
+### 手动前台运行
+
+也可以在两个终端分别运行：
+
+```sh
+uv run --project backend --locked uvicorn zhenagent.api:app --host 0.0.0.0 --port 8000
 ```
 
 ```sh
-pnpm --dir frontend dev
+pnpm --dir frontend dev --host 0.0.0.0
 ```
 
 打开 [工作台](http://127.0.0.1:5173)。后端必须保持单进程运行，不添加 `--workers` 或 `--reload`，避免重复执行任务。修改后端代码后手动重启。

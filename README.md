@@ -16,14 +16,29 @@ pnpm --dir frontend install --frozen-lockfile
 
 默认工作目录为本项目的 `workspace`，启动时自动创建。需要处理其他目录时，在 `.env` 中修改 `ZHEN_WORKSPACE_ROOT`。
 
-分别在两个终端启动后端和前端：
+### 使用管理脚本
+
+在项目根目录运行管理脚本（服务默认绑定 `0.0.0.0`，同时支持本地与当前设备在局域网的 IP 访问）：
 
 ```sh
-uv run --project backend --locked uvicorn zhenagent.api:app --host 127.0.0.1 --port 8000
+./start.sh      # 启动后端与前端服务（展示本地与局域网访问地址）
+./stop.sh       # 停止服务
+./restart.sh    # 重启服务
+./status.sh     # 查看运行状态
+```
+
+脚本支持单独指定服务，如 `./start.sh backend` 或 `./stop.sh frontend`。启动记录与运行日志保存在 `.local/logs/`。
+
+### 手动前台启动
+
+也可以分别在两个终端启动后端和前端：
+
+```sh
+uv run --project backend --locked uvicorn zhenagent.api:app --host 0.0.0.0 --port 8000
 ```
 
 ```sh
-pnpm --dir frontend dev
+pnpm --dir frontend dev --host 0.0.0.0
 ```
 
 打开 [本地工作台](http://127.0.0.1:5173)，进入“模型与运行设置”，添加服务，在“参数来源”选择对应的 Models.dev 服务，再选模型并保存 API key。服务必须支持 Responses。已有配置会保留，点击模型的“恢复默认参数”并保存即可取消旧参数覆盖。更多配置、工具边界和历史保存方式见 [使用说明](doc/development/usage.md)。

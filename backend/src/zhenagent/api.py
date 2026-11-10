@@ -1,7 +1,9 @@
 import asyncio
+import ipaddress
 import json
 import os
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -62,18 +64,41 @@ async def lifespan(app: FastAPI):
             await store.close()
 
 
+def is_allowed_origin(origin: str, configured_origins: list[str]) -> bool:
+    clean = origin.rstrip("/")
+    if clean in configured_origins:
+        return True
+    try:
+        parsed = urlparse(clean)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        if hostname in ("127.0.0.1", "localhost", "::1") or hostname.endswith(".local"):
+            return True
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 app = FastAPI(title="zhenAgent", version="0.1.0", lifespan=lifespan)
 initial_settings = Settings()
-app.add_middleware(CORSMiddleware, allow_origins=initial_settings.origins,
-                   allow_methods=["GET", "POST", "PUT", "DELETE"],
-                   allow_headers=["Content-Type", "Last-Event-ID"])
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=initial_settings.origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|[a-zA-Z0-9.-]+\.local)(:\d+)?$",
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Last-Event-ID"],
+)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 
 
 @app.middleware("http")
 async def origin_guard(request: Request, call_next):
     origin = request.headers.get("origin")
-    if origin and origin.rstrip("/") not in initial_settings.origins:
+    if origin and not is_allowed_origin(origin, initial_settings.origins):
         return JSONResponse({"detail": "不允许此页面来源访问本地 agent"}, status_code=403)
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"
