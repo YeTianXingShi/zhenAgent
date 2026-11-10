@@ -1,10 +1,12 @@
 import asyncio
+import ipaddress
 import json
 import os
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -62,18 +64,41 @@ async def lifespan(app: FastAPI):
             await store.close()
 
 
+def is_allowed_origin(origin: str, configured_origins: list[str]) -> bool:
+    clean = origin.rstrip("/")
+    if clean in configured_origins:
+        return True
+    try:
+        parsed = urlparse(clean)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        if hostname in ("127.0.0.1", "localhost", "::1") or hostname.endswith(".local"):
+            return True
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 app = FastAPI(title="zhenAgent", version="0.1.0", lifespan=lifespan)
 initial_settings = Settings()
-app.add_middleware(CORSMiddleware, allow_origins=initial_settings.origins,
-                   allow_methods=["GET", "POST", "PUT", "DELETE"],
-                   allow_headers=["Content-Type", "Last-Event-ID"])
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=initial_settings.origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|\[::1\]|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|[a-zA-Z0-9.-]+\.local)(:\d+)?$",
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Last-Event-ID"],
+)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 
 
 @app.middleware("http")
 async def origin_guard(request: Request, call_next):
     origin = request.headers.get("origin")
-    if origin and origin.rstrip("/") not in initial_settings.origins:
+    if origin and not is_allowed_origin(origin, initial_settings.origins):
         return JSONResponse({"detail": "不允许此页面来源访问本地 agent"}, status_code=403)
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"
@@ -234,27 +259,36 @@ async def delete_session(session_id: str):
 
 
 @app.get("/api/sessions/{session_id}")
-async def session_detail(session_id: str):
-    cursor = await store().one("SELECT COALESCE(MAX(id),0) AS id FROM events")
-    session = await require_session(session_id)
-    runs = await store().rows("SELECT * FROM runs WHERE session_id=? ORDER BY created_at", (session_id,))
-    for run in runs:
-        legacy = await store().rows("SELECT body FROM items WHERE run_id=? AND attempt_id IS NULL ORDER BY id", (run["id"],))
-        run["legacy_reasoning"] = reasoning_text([json.loads(item["body"]) for item in legacy])
-        run["attempts"] = await store().rows("SELECT * FROM attempts WHERE run_id=? ORDER BY round,attempt", (run["id"],))
-        for attempt in run["attempts"]:
-            attempt["usage"] = json.loads(attempt["usage"]) if attempt["usage"] else None
-        run["tools"] = await store().rows("SELECT * FROM tools WHERE run_id=? ORDER BY rowid", (run["id"],))
-        chunks = await store().rows("SELECT data FROM events WHERE run_id=? AND type='tool.output' ORDER BY id", (run["id"],))
-        stdout: dict[str, str] = {}
-        for row in chunks:
-            chunk = json.loads(row["data"])
-            stdout[chunk["id"]] = stdout.get(chunk["id"], "") + chunk["delta"]
-        for tool in run["tools"]:
-            for field in ("preview", "result"):
-                tool[field] = json.loads(tool[field]) if tool[field] else None
-            tool["live_output"] = stdout.get(tool["id"], "")
-    return safe({**session, "runs": runs, "event_cursor": cursor["id"]})
+async def session_detail(session_id: str, after: int | None = Query(default=None, ge=0)):
+    # The snapshot and its cursor must describe the same committed state.
+    async with store().transaction():
+        cursor = await store().one("SELECT COALESCE(MAX(id),0) AS id FROM events")
+        session = await require_session(session_id)
+        reset = after is None or after > cursor["id"]
+        if reset:
+            runs = await store().rows("SELECT * FROM runs WHERE session_id=? ORDER BY created_at,id", (session_id,))
+        else:
+            runs = await store().rows(
+                "SELECT * FROM runs WHERE session_id=? AND id IN "
+                "(SELECT run_id FROM events WHERE id>?) ORDER BY created_at,id", (session_id, after),
+            )
+        for run in runs:
+            legacy = await store().rows("SELECT body FROM items WHERE run_id=? AND attempt_id IS NULL ORDER BY id", (run["id"],))
+            run["legacy_reasoning"] = reasoning_text([json.loads(item["body"]) for item in legacy])
+            run["attempts"] = await store().rows("SELECT * FROM attempts WHERE run_id=? ORDER BY round,attempt", (run["id"],))
+            for attempt in run["attempts"]:
+                attempt["usage"] = json.loads(attempt["usage"]) if attempt["usage"] else None
+            run["tools"] = await store().rows("SELECT * FROM tools WHERE run_id=? ORDER BY rowid", (run["id"],))
+            chunks = await store().rows("SELECT data FROM events WHERE run_id=? AND type='tool.output' ORDER BY id", (run["id"],))
+            stdout: dict[str, str] = {}
+            for row in chunks:
+                chunk = json.loads(row["data"])
+                stdout[chunk["id"]] = stdout.get(chunk["id"], "") + chunk["delta"]
+            for tool in run["tools"]:
+                for field in ("preview", "result"):
+                    tool[field] = json.loads(tool[field]) if tool[field] else None
+                tool["live_output"] = stdout.get(tool["id"], "")
+    return safe({**session, "runs": runs, "event_cursor": cursor["id"], "reset": reset})
 
 
 @app.post("/api/sessions/{session_id}/runs", status_code=202)
@@ -295,15 +329,16 @@ async def run_events(run_id: str, request: Request, after: int = 0):
         nonlocal cursor
         idle = 0
         while not await request.is_disconnected():
-            rows = await store().rows("SELECT * FROM events WHERE run_id=? AND id>? ORDER BY id LIMIT 200", (run_id, cursor))
+            async with store().transaction():
+                rows = await store().rows("SELECT * FROM events WHERE run_id=? AND id>? ORDER BY id LIMIT 200", (run_id, cursor))
+                run = await store().one("SELECT status FROM runs WHERE id=?", (run_id,))
             for row in rows:
                 cursor = row["id"]
                 value = safe({"type": row["type"], "data": json.loads(row["data"])})
                 yield f"id: {cursor}\ndata: {encode(value)}\n\n"
             if len(rows) == 200:
                 continue
-            run = await store().one("SELECT status FROM runs WHERE id=?", (run_id,))
-            if run["status"] in TERMINAL:
+            if not run or run["status"] in TERMINAL:
                 yield "event: end\ndata: {}\n\n"
                 return
             idle = 0 if rows else idle + 1
