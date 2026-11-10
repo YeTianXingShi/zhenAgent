@@ -17,15 +17,21 @@ __pycache__/
 .tox/
 .nox/
 
-# Node.js 依赖和包管理缓存
+# Node.js 依赖、包管理缓存和错误日志
 node_modules/
 .npm/
+.pnpm/
 .pnpm-store/
+pnpm-debug.log*
+.pnpm-debug.log*
+npm-debug.log*
 
 # 项目构建和测试产物；保留第三方 skill 自带的 dist
 /build/
 /dist/
 /frontend/dist/
+.vite/
+vite.config.*.timestamp-*
 *.tsbuildinfo
 /workspace/
 /coverage/
