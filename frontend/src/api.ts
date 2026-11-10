@@ -31,6 +31,7 @@ export type ToolPreview = { command?: string; cwd?: string; warning?: string; pa
 export type Tool = { id: string; round: number; name: string; arguments: string; status: string; error: string | null; approval_status: string | null; preview: ToolPreview | null; result: Record<string, unknown> | null; live_output: string }
 export type Run = { id: string; input_text: string; status: string; error: string | null; call_count: number; attempts: Attempt[]; tools: Tool[]; created_at: string; legacy_reasoning: string }
 export type Detail = Session & { runs: Run[]; event_cursor: number }
+export type DetailUpdate = Detail & { reset: boolean }
 export type Limits = { max_model_calls: number; command_timeout: number; request_timeout: number; max_retries: number; retry_delay: number; command_output_bytes: number; model_output_bytes: number; read_file_bytes: number; tool_context_bytes: number }
 export type Settings = { workspace_root: string; limits: Limits; active_run: { id: string } | null }
 

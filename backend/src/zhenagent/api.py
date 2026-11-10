@@ -4,7 +4,7 @@ import os
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -234,27 +234,36 @@ async def delete_session(session_id: str):
 
 
 @app.get("/api/sessions/{session_id}")
-async def session_detail(session_id: str):
-    cursor = await store().one("SELECT COALESCE(MAX(id),0) AS id FROM events")
-    session = await require_session(session_id)
-    runs = await store().rows("SELECT * FROM runs WHERE session_id=? ORDER BY created_at", (session_id,))
-    for run in runs:
-        legacy = await store().rows("SELECT body FROM items WHERE run_id=? AND attempt_id IS NULL ORDER BY id", (run["id"],))
-        run["legacy_reasoning"] = reasoning_text([json.loads(item["body"]) for item in legacy])
-        run["attempts"] = await store().rows("SELECT * FROM attempts WHERE run_id=? ORDER BY round,attempt", (run["id"],))
-        for attempt in run["attempts"]:
-            attempt["usage"] = json.loads(attempt["usage"]) if attempt["usage"] else None
-        run["tools"] = await store().rows("SELECT * FROM tools WHERE run_id=? ORDER BY rowid", (run["id"],))
-        chunks = await store().rows("SELECT data FROM events WHERE run_id=? AND type='tool.output' ORDER BY id", (run["id"],))
-        stdout: dict[str, str] = {}
-        for row in chunks:
-            chunk = json.loads(row["data"])
-            stdout[chunk["id"]] = stdout.get(chunk["id"], "") + chunk["delta"]
-        for tool in run["tools"]:
-            for field in ("preview", "result"):
-                tool[field] = json.loads(tool[field]) if tool[field] else None
-            tool["live_output"] = stdout.get(tool["id"], "")
-    return safe({**session, "runs": runs, "event_cursor": cursor["id"]})
+async def session_detail(session_id: str, after: int | None = Query(default=None, ge=0)):
+    # The snapshot and its cursor must describe the same committed state.
+    async with store().transaction():
+        cursor = await store().one("SELECT COALESCE(MAX(id),0) AS id FROM events")
+        session = await require_session(session_id)
+        reset = after is None or after > cursor["id"]
+        if reset:
+            runs = await store().rows("SELECT * FROM runs WHERE session_id=? ORDER BY created_at,id", (session_id,))
+        else:
+            runs = await store().rows(
+                "SELECT * FROM runs WHERE session_id=? AND id IN "
+                "(SELECT run_id FROM events WHERE id>?) ORDER BY created_at,id", (session_id, after),
+            )
+        for run in runs:
+            legacy = await store().rows("SELECT body FROM items WHERE run_id=? AND attempt_id IS NULL ORDER BY id", (run["id"],))
+            run["legacy_reasoning"] = reasoning_text([json.loads(item["body"]) for item in legacy])
+            run["attempts"] = await store().rows("SELECT * FROM attempts WHERE run_id=? ORDER BY round,attempt", (run["id"],))
+            for attempt in run["attempts"]:
+                attempt["usage"] = json.loads(attempt["usage"]) if attempt["usage"] else None
+            run["tools"] = await store().rows("SELECT * FROM tools WHERE run_id=? ORDER BY rowid", (run["id"],))
+            chunks = await store().rows("SELECT data FROM events WHERE run_id=? AND type='tool.output' ORDER BY id", (run["id"],))
+            stdout: dict[str, str] = {}
+            for row in chunks:
+                chunk = json.loads(row["data"])
+                stdout[chunk["id"]] = stdout.get(chunk["id"], "") + chunk["delta"]
+            for tool in run["tools"]:
+                for field in ("preview", "result"):
+                    tool[field] = json.loads(tool[field]) if tool[field] else None
+                tool["live_output"] = stdout.get(tool["id"], "")
+    return safe({**session, "runs": runs, "event_cursor": cursor["id"], "reset": reset})
 
 
 @app.post("/api/sessions/{session_id}/runs", status_code=202)
@@ -295,15 +304,16 @@ async def run_events(run_id: str, request: Request, after: int = 0):
         nonlocal cursor
         idle = 0
         while not await request.is_disconnected():
-            rows = await store().rows("SELECT * FROM events WHERE run_id=? AND id>? ORDER BY id LIMIT 200", (run_id, cursor))
+            async with store().transaction():
+                rows = await store().rows("SELECT * FROM events WHERE run_id=? AND id>? ORDER BY id LIMIT 200", (run_id, cursor))
+                run = await store().one("SELECT status FROM runs WHERE id=?", (run_id,))
             for row in rows:
                 cursor = row["id"]
                 value = safe({"type": row["type"], "data": json.loads(row["data"])})
                 yield f"id: {cursor}\ndata: {encode(value)}\n\n"
             if len(rows) == 200:
                 continue
-            run = await store().one("SELECT status FROM runs WHERE id=?", (run_id,))
-            if run["status"] in TERMINAL:
+            if not run or run["status"] in TERMINAL:
                 yield "event: end\ndata: {}\n\n"
                 return
             idle = 0 if rows else idle + 1

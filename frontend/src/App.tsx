@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { API, request, send, running, statuses, toolNames, type Provider, type Session, type Detail, type Run, type Tool, type Settings } from './api'
+import { API, request, send, running, statuses, toolNames, type Provider, type Session, type Detail, type DetailUpdate, type Run, type Tool, type Settings } from './api'
 import SettingsPanel from './Settings'
 import FilePreview, { isNewFile } from './FilePreview'
 import Reasoning from './Reasoning'
@@ -81,7 +81,6 @@ export default function App() {
   const selectedRef = useRef(selected)
   selectedRef.current = selected
   const detailRef = useRef(detail)
-  detailRef.current = detail
   const scroll = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const submission = useRef<{ session: string; text: string; id: string } | null>(null)
@@ -94,12 +93,52 @@ export default function App() {
     setProviders(nextProviders); setSessions(nextSessions); setSettings(nextSettings); setConnected(true)
   }, [])
 
-  const load = useCallback(async (id: string) => {
-    const snapshot = await request<Detail>(`/api/sessions/${id}`)
-    if (selectedRef.current === id && (!detailRef.current || detailRef.current.id !== id || snapshot.event_cursor >= detailRef.current.event_cursor)) {
-      detailRef.current = snapshot
-      setDetail(snapshot)
+  const loading = useRef(new Map<string, Promise<void>>())
+  const loadAgain = useRef(new Set<string>())
+  const streamConnected = useRef<string | null>(null)
+  const load = useCallback((id: string): Promise<void> => {
+    const pending = loading.current.get(id)
+    if (pending) {
+      loadAgain.current.add(id)
+      return pending
     }
+    const work = async () => {
+      do {
+        loadAgain.current.delete(id)
+        const previous = detailRef.current?.id === id ? detailRef.current : null
+        const suffix = previous ? `?after=${previous.event_cursor}` : ''
+        const snapshot = await request<DetailUpdate>(`/api/sessions/${id}${suffix}`)
+        if (selectedRef.current !== id) return
+        const current = detailRef.current?.id === id ? detailRef.current : null
+        // A switch away and back can discard the base for an in-flight update.
+        if (!snapshot.reset && !current) {
+          loadAgain.current.add(id)
+          continue
+        }
+        if (snapshot.reset || !current || snapshot.event_cursor >= current.event_cursor) {
+          const changed = new Map(snapshot.runs.map(run => [run.id, run]))
+          const runs = snapshot.reset || !current ? snapshot.runs : [
+            ...current.runs.map(run => {
+              const replacement = changed.get(run.id)
+              changed.delete(run.id)
+              return replacement || run
+            }),
+            ...changed.values(),
+          ]
+          if (!current || snapshot.reset || snapshot.runs.length || snapshot.title !== current.title || snapshot.updated_at !== current.updated_at) {
+            const next = { ...snapshot, runs }
+            detailRef.current = next
+            setDetail(next)
+          } else {
+            // Advancing a cursor alone does not need a conversation render.
+            detailRef.current = { ...current, event_cursor: snapshot.event_cursor }
+          }
+        }
+      } while (loadAgain.current.has(id))
+    }
+    const promise = work().finally(() => { loading.current.delete(id); loadAgain.current.delete(id) })
+    loading.current.set(id, promise)
+    return promise
   }, [])
 
   useEffect(() => {
@@ -107,15 +146,21 @@ export default function App() {
     const poll = async () => {
       try {
         await refresh()
-        if (alive && selectedRef.current) await load(selectedRef.current)
+        if (alive && selectedRef.current && streamConnected.current !== selectedRef.current) await load(selectedRef.current)
       } catch { if (alive) setConnected(false) }
     }
-    void poll()
-    const timer = window.setInterval(poll, 2500)
-    return () => { alive = false; clearInterval(timer) }
+    let timer: number | undefined
+    const repeat = async () => {
+      await poll()
+      if (alive) timer = window.setTimeout(repeat, 2500)
+    }
+    // Repeat only after the previous request finishes.
+    void repeat()
+    return () => { alive = false; clearTimeout(timer) }
   }, [refresh, load])
 
   useEffect(() => {
+    detailRef.current = null
     setDetail(null); setText(''); setError(''); stick.current = true
     if (selected) void load(selected).catch(failure => setError(failure.message))
   }, [selected, load])
@@ -132,11 +177,13 @@ export default function App() {
         if (!closed) void load(selected).catch(failure => setError(failure.message))
       }, 120)
     }
-    stream.onmessage = update
-    stream.addEventListener('end', () => { stream.close(); void load(selected).catch(failure => setError(failure.message)); void refresh().catch(() => setConnected(false)) })
-    stream.onerror = () => { setConnected(false); update() }
-    stream.onopen = () => { setConnected(true); update() }
-    return () => { closed = true; stream.close(); if (timer !== undefined) clearTimeout(timer) }
+    stream.onmessage = event => {
+      if (Number(event.lastEventId) > (detailRef.current?.event_cursor || 0)) update()
+    }
+    stream.addEventListener('end', () => { streamConnected.current = null; stream.close(); void load(selected).catch(failure => setError(failure.message)); void refresh().catch(() => setConnected(false)) })
+    stream.onerror = () => { streamConnected.current = null; setConnected(false); update() }
+    stream.onopen = () => { streamConnected.current = selected; setConnected(true); update() }
+    return () => { closed = true; streamConnected.current = null; stream.close(); if (timer !== undefined) clearTimeout(timer) }
   }, [selected, currentRun?.id, load, refresh])
 
   useEffect(() => {

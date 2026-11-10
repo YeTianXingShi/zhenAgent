@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,7 @@ class Store:
         self.path = path
         self.lock = asyncio.Lock()
         self.db: aiosqlite.Connection | None = None
+        self._owner: asyncio.Task | None = None
 
     async def open(self):
         self.db = await aiosqlite.connect(self.path)
@@ -132,13 +134,35 @@ class Store:
         if self.db:
             await self.db.close()
 
-    async def execute(self, sql: str, values=()):
+    @asynccontextmanager
+    async def transaction(self):
+        """Serialize a complete state transition; nested calls share its transaction.
+
+        The owner is the current task, never an inherited context variable. Do not
+        wait for network, approval, or child tasks while holding this transaction.
+        """
+        task = asyncio.current_task()
+        if self._owner is task:
+            yield
+            return
         async with self.lock:
+            self._owner = task
+            try:
+                await self.db.execute("BEGIN")
+                yield
+                await self.db.commit()
+            except BaseException:
+                await self.db.rollback()
+                raise
+            finally:
+                self._owner = None
+
+    async def execute(self, sql: str, values=()):
+        async with self.transaction():
             await self.db.execute(sql, values)
-            await self.db.commit()
 
     async def rows(self, sql: str, values=()) -> list[dict]:
-        async with self.lock:
+        async with self.transaction():
             async with self.db.execute(sql, values) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
 
@@ -152,57 +176,53 @@ class Store:
         )]
 
     async def add_items(self, session_id: str, run_id: str, items: list[dict], attempt_id: str | None = None):
-        async with self.lock:
+        async with self.transaction():
             await self.db.executemany(
                 "INSERT INTO items(session_id,run_id,body,attempt_id) VALUES(?,?,?,?)",
                 [(session_id, run_id, encode(item), attempt_id) for item in items],
             )
-            await self.db.commit()
 
     async def event(self, run_id: str, kind: str, data: dict):
-        async with self.lock:
+        async with self.transaction():
             cursor = await self.db.execute(
                 "INSERT INTO events(run_id,type,data,created_at) VALUES(?,?,?,?)",
                 (run_id, kind, encode(data), now()),
             )
-            await self.db.commit()
             return cursor.lastrowid
 
     async def run_status(self, run_id: str, status: str, error: str | None = None):
-        await self.execute("UPDATE runs SET status=?,error=?,updated_at=? WHERE id=?", (status, error, now(), run_id))
-        await self.event(run_id, "run.status", {"status": status, "error": error})
+        async with self.transaction():
+            await self.execute("UPDATE runs SET status=?,error=?,updated_at=? WHERE id=?", (status, error, now(), run_id))
+            await self.event(run_id, "run.status", {"status": status, "error": error})
 
     async def reconcile(self, session_id: str, run_id: str, reason: str):
-        context = await self.context(session_id)
-        outputs = {item.get("call_id") for item in context if item.get("type") == "function_call_output"}
-        pending = [item for item in context if item.get("type") == "function_call" and item.get("call_id") not in outputs]
-        if pending:
-            await self.add_items(session_id, run_id, [
-                {"type": "function_call_output", "call_id": item["call_id"], "output": encode({"error": reason})}
-                for item in pending
-            ])
-        await self.execute(
-            "UPDATE tools SET status='interrupted',error=?,approval_status=CASE WHEN approval_status='pending' THEN 'expired' ELSE approval_status END WHERE run_id=? AND status IN ('pending','running','awaiting_approval')",
-            (reason, run_id),
-        )
+        async with self.transaction():
+            context = await self.context(session_id)
+            outputs = {item.get("call_id") for item in context if item.get("type") == "function_call_output"}
+            pending = [item for item in context if item.get("type") == "function_call" and item.get("call_id") not in outputs]
+            if pending:
+                await self.add_items(session_id, run_id, [
+                    {"type": "function_call_output", "call_id": item["call_id"], "output": encode({"error": reason})}
+                    for item in pending
+                ])
+            await self.execute(
+                "UPDATE tools SET status='interrupted',error=?,approval_status=CASE WHEN approval_status='pending' THEN 'expired' ELSE approval_status END WHERE run_id=? AND status IN ('pending','running','awaiting_approval')",
+                (reason, run_id),
+            )
 
     async def recover(self):
         for run in await self.rows("SELECT * FROM runs WHERE status IN ('running','awaiting_approval')"):
             reason = "后端已重启，任务中断；已发生的操作不会回滚"
-            await self.reconcile(run["session_id"], run["id"], reason)
-            await self.run_status(run["id"], "interrupted", reason)
+            async with self.transaction():
+                await self.execute("UPDATE attempts SET status='interrupted',error=? WHERE run_id=? AND status='running'", (reason, run["id"]))
+                await self.reconcile(run["session_id"], run["id"], reason)
+                await self.run_status(run["id"], "interrupted", reason)
         await self.execute("UPDATE attempts SET status='interrupted',error='后端已重启' WHERE status='running'")
 
     async def delete_session(self, session_id: str):
-        async with self.lock:
-            try:
-                await self.db.execute("BEGIN IMMEDIATE")
-                await self.db.execute("DELETE FROM items WHERE session_id=?", (session_id,))
-                for table in ("events", "tools", "attempts"):
-                    await self.db.execute(f"DELETE FROM {table} WHERE run_id IN (SELECT id FROM runs WHERE session_id=?)", (session_id,))
-                await self.db.execute("DELETE FROM runs WHERE session_id=?", (session_id,))
-                await self.db.execute("DELETE FROM sessions WHERE id=?", (session_id,))
-                await self.db.commit()
-            except BaseException:
-                await self.db.rollback()
-                raise
+        async with self.transaction():
+            await self.db.execute("DELETE FROM items WHERE session_id=?", (session_id,))
+            for table in ("events", "tools", "attempts"):
+                await self.db.execute(f"DELETE FROM {table} WHERE run_id IN (SELECT id FROM runs WHERE session_id=?)", (session_id,))
+            await self.db.execute("DELETE FROM runs WHERE session_id=?", (session_id,))
+            await self.db.execute("DELETE FROM sessions WHERE id=?", (session_id,))
